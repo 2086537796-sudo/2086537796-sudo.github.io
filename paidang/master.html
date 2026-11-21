@@ -384,6 +384,20 @@ function saveAutoQueues(map) {
     autoQueues[String(a.id)] = arr;
     saveJSON(autoQKey(a.id), arr);
   });
+  pushQueuesToFirebase(map);
+}
+/* 总包把各号的队也推到 Firebase，手机点“拉下一组”时直接从这里拿最新队，不用等总包发新链接 */
+function pushQueuesToFirebase(map) {
+  if (!map) return;
+  const QB = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/queue/acct';
+  ACCOUNTS.forEach(a => {
+    const arr = Array.isArray(map[String(a.id)]) ? map[String(a.id)] : [];
+    fetch(QB + a.id + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: arr, updated: Date.now() })
+    }).catch(() => {});
+  });
 }
 function manualAssignedPids() {
   const s = new Set();
@@ -1225,9 +1239,9 @@ fetch('products.json')
     PRODUCTS = data;
     fillManualSelects();
     setMode(mode);
-    // 自动同步：打开就拉一次，之后每 30 秒拉一次各手机最新状态
+    // 自动同步：打开就拉一次，之后每 5 秒拉一次各手机最新状态
     pullFromChannel();
-    setInterval(pullFromChannel, 30000);
+    setInterval(pullFromChannel, 5000);
   })
   .catch(e => {
     document.getElementById('list').innerHTML = '<div class="empty">products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。</div>';

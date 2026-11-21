@@ -238,9 +238,25 @@ const BATCH = 10;               // 每组拉 10 个
    没有 x 参数的旧链接也能打开，刷新时只按本机已做完/已重做过滤。 */
 const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0));
 
-/* 自动派单：acct.html?a=N&auto=1&q=set_no列表（整条队）。手机点刷新自助拿下一组，不用总包再发链接。 */
+/* 自动派单：acct.html?a=N&auto=1&q=set_no列表（整条队）。手机点刷新自助拿下一组，不用总包再发链接。
+   队以 Firebase 上的为准（总包算好队就推上来）；链接里的 q 只是初始队，Firebase 没队时才用它。 */
 const AUTO_MODE = params.get('auto') === '1';
-const AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
+let AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
+/* 从 Firebase 拉本号最新队（总包每 5 秒推一次）。返回 true 表示队变了。 */
+function fetchQueueFromFirebase() {
+  if (!AUTO_MODE) return Promise.resolve(false);
+  return fetch(SYNC_BASE + '/queue/acct' + ACCT_ID + '.json', { headers: { 'Accept': 'application/json' } })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      if (!data || !Array.isArray(data.q) || !data.q.length) return false;
+      const q = data.q.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n > 0);
+      if (!q.length || q.join(',') === AUTO_QUEUE.join(',')) return false;
+      AUTO_QUEUE = q;
+      setupAutoQueue();
+      return true;
+    })
+    .catch(() => false);
+}
 
 /* 本账号的本地状态（只存在这台手机上，别的账号看不到，也不会互相影响） */
 const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: true } —— 按 pid 记，做完永不再推
@@ -264,7 +280,8 @@ function reasonsText(codes) { return (codes || []).map(reasonLabel).join('、');
 
 /* 自动同步通道：Firebase Realtime Database（paidang-sync 项目，测试模式 30 天公开读写）。
    手机把状态推到 paidang/acct{N}.json，总包定时来拉。 */
-const SYNC_URL = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/acct' + ACCT_ID + '.json';
+const SYNC_BASE = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang';
+const SYNC_URL = SYNC_BASE + '/acct' + ACCT_ID + '.json';
 let syncStatus = ''; // 上次推送结果：'ok' | 'fail' | ''
 function pushStateToChannel() {
   if (!SYNC_URL) return Promise.resolve(false);
@@ -1101,8 +1118,9 @@ function copyText(text, btn, okLabel) {
    拉到的新组会写进链接（replaceState），刷新页面也不丢。 */
 function refreshBatch() {
   if (!PRODUCTS.length) { toast('产品库还没加载好，稍等一下再点'); return; }
-  // 拉下一组的同时，把本机当前状态（已做完 + 待重做）推给总包
+  // 拉下一组的同时，把本机当前状态（已做完 + 待重做）推给总包，并从 Firebase 拿最新队
   pushStateToChannel().then(updateSyncLine);
+  const doRefresh = () => {
   if (AUTO_MODE) {
     // 自动模式：直接从队里拿接下来 10 个未消费的套，不用总包再发链接
     const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
@@ -1145,6 +1163,10 @@ function refreshBatch() {
   render(currentAssigned);
   window.scrollTo(0, 0);
   toast('已拉到下一组：' + next.length + ' 套');
+  };
+  // 自动模式先从 Firebase 拿总包算好的最新队，再算下一组；手动模式直接算
+  if (AUTO_MODE) fetchQueueFromFirebase().then(doRefresh);
+  else doRefresh();
 }
 document.getElementById('refreshBtn').addEventListener('click', refreshBatch);
 
@@ -1277,6 +1299,8 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         const hint = document.querySelector('.refresh-bar .hint');
         if (hint) hint.textContent = '自动派单：做完先点“提交给总包”，再点“拉下一组”拿下一组，不用等总包发链接';
         render(currentAssigned);
+        // 打开页面就从 Firebase 拿总包算好的最新队（有新队就换上重算）
+        fetchQueueFromFirebase().then(changed => { if (changed) { currentAssigned = computeAutoBatch(); render(currentAssigned); } });
       } else {
         currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
         const missing = ASSIGNED_SETS.length - currentAssigned.length;
