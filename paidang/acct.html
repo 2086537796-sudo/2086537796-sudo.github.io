@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>子工作台 · 接单</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f2f2f2; color: #222; font-size: 15px; line-height: 1.5; }
+  button { font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  img { display: block; max-width: 100%; }
+
+  /* ===== 顶部栏：静态小横条，不吸顶，滚动时随页面滑走 ===== */
+  header { background: #fff; padding: 10px 12px 12px; border-bottom: 1px solid #e5e5e5; }
+  .head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  .progress { font-size: 13px; color: #666; white-space: nowrap; }
+  .progress b { color: #e8590c; font-size: 15px; }
+  .progress b.done { color: #2f9e44; }
+  .bar { height: 5px; background: #eee; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #2f9e44; width: 0%; }
+  .stat-line { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .stat-chip { flex: 1; min-width: 70px; background: #f7f7f7; border-radius: 8px; padding: 6px 8px; text-align: center; font-size: 12px; color: #888; }
+  .stat-chip b { display: block; font-size: 18px; color: #222; }
+  .stat-chip b.orange { color: #e8590c; }
+  .stat-chip b.green { color: #2f9e44; }
+
+  /* ===== 顶部刷新条：吸顶，永远在最上方，一眼能看到 ===== */
+  .refresh-bar { position: sticky; top: 0; z-index: 60; background: #fff; padding: calc(8px + env(safe-area-inset-top)) 10px 8px; border-bottom: 1px solid #e5e5e5; }
+  .refresh-bar button { display: block; width: 100%; height: 50px; border: none; border-radius: 10px; background: #e8590c; color: #fff; font-size: 18px; font-weight: 700; }
+  .refresh-bar button:active { background: #d14d0a; }
+  .refresh-bar .hint { text-align: center; font-size: 12px; color: #888; margin-top: 5px; }
+
+  main { padding: 10px 10px 20px; max-width: 720px; margin: 0 auto; }
+
+  /* ===== 产品卡片 ===== */
+  .card { background: #fff; border-radius: 12px; padding: 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .card-head h2 { font-size: 17px; }
+  .badge { flex: none; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #fff3e0; color: #e8590c; }
+  .row { margin-top: 6px; font-size: 14px; color: #333; word-break: break-word; }
+  .row .label { color: #888; }
+  .copy-btn { margin-left: 6px; font-size: 12px; padding: 2px 8px; border: 1px solid #ccc; background: #fff; border-radius: 6px; color: #555; }
+
+  .grid { display: grid; gap: 6px; margin-top: 10px; }
+  .grid.c3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.c2 { grid-template-columns: repeat(2, 1fr); }
+  .grid img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; background: #eee; }
+  .grid .tag { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 1px 7px; border-radius: 8px; }
+  .cell { position: relative; }
+
+  .save-btn { display: block; width: 100%; margin-top: 12px; height: 52px; border: none; border-radius: 10px; background: #e8590c; color: #fff; font-size: 18px; font-weight: 700; }
+  .save-btn:disabled { background: #ccc; }
+  .save-note { margin-top: 6px; font-size: 12px; color: #888; text-align: center; }
+
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .actions button { flex: 1; height: 46px; border-radius: 8px; font-size: 16px; }
+  .done-btn { border: 1px solid #2f9e44; background: #fff; color: #2f9e44; font-weight: 700; }
+  .done-btn.arm { background: #2f9e44; color: #fff; }
+  .redo-btn { border: 1px solid #e8590c; background: #fff; color: #e8590c; font-weight: 700; }
+  .redo-btn.arm { background: #e8590c; color: #fff; }
+  .remove-btn { border: 1px solid #ddd; background: #fff; color: #999; }
+  .remove-btn.arm { border-color: #e03131; color: #e03131; }
+
+  .empty { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
+  .error { background: #fff; border-radius: 12px; padding: 20px 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); text-align: center; color: #c92a2a; font-size: 15px; line-height: 1.8; }
+
+  /* 已做完清单 */
+  .done-list { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .done-list summary { font-size: 15px; font-weight: 700; cursor: pointer; color: #2f9e44; }
+  .done-list ul { list-style: none; margin-top: 8px; }
+  .done-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid #f0f0f0; padding: 8px 0; font-size: 13px; }
+  .done-list li:first-child { border-top: none; }
+  .done-list .restore { flex: none; font-size: 12px; padding: 4px 10px; border: 1px solid #2f9e44; background: #fff; color: #2f9e44; border-radius: 6px; }
+  .removed-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+  .removed-bar button { flex: 1; height: 38px; border-radius: 8px; font-size: 14px; border: 1px solid #e8590c; background: #fff; color: #e8590c; }
+
+  footer { padding: 16px 16px 30px; font-size: 12px; color: #999; text-align: center; line-height: 1.8; }
+
+  /* ===== 大图预览 ===== */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 100; display: flex; flex-direction: column; }
+  .overlay[hidden] { display: none; }
+  .overlay .ov-img-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
+  .overlay .ov-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; }
+  .ov-bar { display: flex; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .ov-bar button { flex: 1; height: 46px; border-radius: 10px; font-size: 16px; border: none; }
+  .ov-save { background: #e8590c; color: #fff; font-weight: 700; }
+  .ov-close { background: #333; color: #fff; }
+
+  /* ===== 全屏存图模式（长按存相册） ===== */
+  #saveMode { position: fixed; inset: 0; background: #000; z-index: 200; display: flex; flex-direction: column; color: #fff; }
+  #saveMode[hidden] { display: none; }
+  .sm-tip { padding: calc(10px + env(safe-area-inset-top)) 14px 8px; font-size: 16px; font-weight: 700; text-align: center; }
+  .sm-tip small { display: block; font-weight: 400; font-size: 13px; color: #ccc; margin-top: 2px; }
+  .sm-img-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 4px 8px; touch-action: pan-x pan-y; }
+  .sm-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .sm-bar { display: flex; gap: 8px; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); align-items: center; }
+  .sm-bar button { height: 48px; border-radius: 10px; font-size: 16px; border: none; }
+  .sm-prev, .sm-next { flex: 1; background: #2b2b2b; color: #fff; }
+  .sm-next.primary { background: #e8590c; font-weight: 700; }
+  .sm-count { flex: none; font-size: 14px; color: #ddd; min-width: 64px; text-align: center; }
+  .sm-close { position: absolute; top: calc(8px + env(safe-area-inset-top)); right: 10px; width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(255,255,255,.2); color: #fff; font-size: 18px; z-index: 1; }
+
+  .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: rgba(0,0,0,.85); color: #fff; font-size: 14px; padding: 10px 16px; border-radius: 20px; z-index: 300; white-space: nowrap; }
+  .toast[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+<!-- 顶部刷新：做完当前这 10 套就点这里，拉下一组 10 套 -->
+<div class="refresh-bar">
+  <button id="refreshBtn" type="button">🔄 刷新 · 拉下一组（10 套）</button>
+  <div class="hint">做完当前这组 10 套再点刷新，系统按顺序跳过已做完/已重做的，拉接下来没做过的 10 套</div>
+</div>
+
+<header>
+  <div class="head-row">
+    <h1 id="acctTitle">子工作台</h1>
+    <div class="progress">已做完 <b class="done" id="doneCount">0</b> / <span id="totalCount">0</span> 套</div>
+  </div>
+  <div class="bar"><i id="progressBar"></i></div>
+  <div class="stat-line">
+    <div class="stat-chip">分到<b class="orange" id="stAssigned">0</b>套</div>
+    <div class="stat-chip">已做完<b class="green" id="stDone">0</b>套</div>
+    <div class="stat-chip">待重做<b class="orange" id="stRedo">0</b>套</div>
+    <div class="stat-chip">还剩<b id="stRemain">0</b>套</div>
+    <div class="stat-chip">完成度<b class="green" id="stPct">0%</b></div>
+  </div>
+</header>
+
+<main id="main">
+  <div id="errorBox" class="error" hidden></div>
+  <div id="removedBar" class="removed-bar" hidden>
+    <button id="restoreRemovedBtn" type="button">恢复已移除（0）</button>
+  </div>
+  <div id="list"></div>
+  <div id="empty" class="empty" hidden>没有待做的品了，全部做完啦 🎉</div>
+  <details id="doneListBox" class="done-list" hidden>
+    <summary id="doneListSummary">已做完（0 套）· 点开查看</summary>
+    <ul id="doneList"></ul>
+  </details>
+  <details id="redoListBox" class="done-list" hidden>
+    <summary id="redoListSummary">待重做（0 套）· 点开查看</summary>
+    <ul id="redoList"></ul>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button id="copyRedoBtn" type="button" style="flex:1;height:40px;border-radius:8px;font-size:14px;border:1px solid #e8590c;background:#fff;color:#e8590c;">复制待重做清单发给总包</button>
+    </div>
+  </details>
+  <button id="copyStatusBtn" type="button" style="display:block;width:100%;height:48px;border-radius:10px;font-size:16px;font-weight:700;border:1px solid #e8590c;background:#fff;color:#e8590c;margin-top:4px;">复制本机状态（已做完 + 待重做）发给总包</button>
+  <div style="font-size:12px;color:#888;text-align:center;margin-top:6px;line-height:1.7;">做完一组后点一下，把本机全部已做完和待重做的 pid 复制发给总包；<br>总包粘贴同步后，就知道哪些做完了、哪些要重做，不会再重复派。</div>
+</main>
+
+<footer>
+  点「存到相册」：支持分享的浏览器会弹出分享，选「存储到照片」，整套原图直接进相册；<br>
+  不支持分享的浏览器会打开存图模式，长按图片点「存储到照片」，逐张存进相册。<br>
+  不打包、不经过「文件」App。发完一个品就点「已做完」，点了之后这个 pid 就不会再推给你了。<br>
+  图不行要返工就点「重做」，这个 pid 也会从待发列表消失并进「待重做」清单；重做好的新版重新派给你时会自动恢复。
+</footer>
+
+<!-- 大图预览 -->
+<div id="lightbox" class="overlay" hidden>
+  <div class="ov-img-wrap"><img id="lbImg" alt=""></div>
+  <div class="ov-bar">
+    <button id="lbSave" class="ov-save" type="button">存这张到相册</button>
+    <button id="lbClose" class="ov-close" type="button">关闭</button>
+  </div>
+</div>
+
+<!-- 全屏存图模式 -->
+<div id="saveMode" hidden>
+  <button id="smClose" class="sm-close" type="button">✕</button>
+  <div class="sm-tip">长按图片，点「存储到照片」<small>存好这张再点「下一张」，全部存完点「存完，关闭」</small></div>
+  <div class="sm-img-wrap" id="smWrap"><img id="smImg" alt=""></div>
+  <div class="sm-bar">
+    <button id="smPrev" class="sm-prev" type="button">← 上一张</button>
+    <span id="smCount" class="sm-count">第 1 / 1 张</span>
+    <button id="smNext" class="sm-next primary" type="button">下一张 →</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* ================= 账号配置：与 master.html 保持一致，加账号在这里加一行 ================= */
+const ACCOUNTS = [
+  { id: 1, name: '账号 1' },
+  { id: 2, name: '账号 2' }
+];
+const IMG_BASE = 'data/';
+
+/* 从链接读账号和派单：acct.html?a=1&s=1,3,5（s 是 set_no 列表） */
+const params = new URLSearchParams(location.search);
+const ACCT_ID = parseInt(params.get('a') || '', 10);
+const ASSIGNED_SETS = (params.get('s') || '')
+  .split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
+const ACCT_NAME = (ACCOUNTS.find(a => a.id === ACCT_ID) || {}).name || ('账号 ' + (ACCT_ID || '?'));
+const BATCH = 10;               // 每组拉 10 个
+/* 刷新时要跳过的 set_no：总包在链接里带的（?x=），别的账号手里的 + 已做完 + 待重做的（防重复）。
+   没有 x 参数的旧链接也能打开，刷新时只按本机已做完/已重做过滤。 */
+const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0));
+
+/* 本账号的本地状态（只存在这台手机上，别的账号看不到，也不会互相影响） */
+const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: true } —— 按 pid 记，做完永不再推
+const LS_REMOVED = 'paidang_removed_a' + ACCT_ID; // { set_no: true } —— 按套移除，可恢复
+const LS_REDO = 'paidang_redo_a' + ACCT_ID;       // { pid: {time, set_no, title_cn} } —— 按 pid 记，图不行要返工
+
+let PRODUCTS = [];
+let doneState = {};
+let removedState = {};
+let redoState = {};
+
+function loadJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+  catch (e) { return fallback; }
+}
+function saveJSON(key, obj) {
+  try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
+}
+doneState = loadJSON(LS_DONE, {});
+removedState = loadJSON(LS_REMOVED, {});
+redoState = loadJSON(LS_REDO, {});
+
+/* 总包重新派单时带的清除重做指令：?cr=pid1,pid2 —— 清掉本机这些 pid 的重做标记，让新版重新出现。
+   只清“重做”，不碰“已做完”。 */
+const CLEAR_REDO = (params.get('cr') || '').split(',').map(s => s.trim()).filter(Boolean);
+if (CLEAR_REDO.length) {
+  let changed = false;
+  CLEAR_REDO.forEach(pid => {
+    if (redoState[pid]) { delete redoState[pid]; changed = true; }
+  });
+  if (changed) saveJSON(LS_REDO, redoState);
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
+}
+function enc(path) { return encodeURI(path); }
+function fmtTime(ts) {
+  const d = new Date(ts);
+  const p = x => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function bySetNo(n) { return PRODUCTS.find(p => p.set_no === n); }
+function isDone(p) { return !!doneState[String(p.pid)]; }
+function isRedo(p) { return !!redoState[String(p.pid)]; }
+function imgURL(p, fn) { return enc(IMG_BASE + p.folder + '/' + fn); }
+
+function renderStats(assignedList) {
+  const assigned = assignedList.length;
+  const done = assignedList.filter(isDone).length;
+  const redo = assignedList.filter(p => !isDone(p) && isRedo(p)).length;
+  const remain = assigned - done - redo - assignedList.filter(p => !isDone(p) && !isRedo(p) && removedState[p.set_no]).length;
+  const pct = assigned ? Math.round(done / assigned * 100) : 0;
+  document.getElementById('doneCount').textContent = done;
+  document.getElementById('totalCount').textContent = assigned;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('stAssigned').textContent = assigned;
+  document.getElementById('stDone').textContent = done;
+  document.getElementById('stRedo').textContent = redo;
+  document.getElementById('stRemain').textContent = remain;
+  document.getElementById('stPct').textContent = pct + '%';
+}
+
+function render(assignedList) {
+  renderStats(assignedList);
+  const listEl = document.getElementById('list');
+  const emptyEl = document.getElementById('empty');
+  listEl.innerHTML = '';
+  const removedCount = Object.keys(removedState).length;
+  const removedBar = document.getElementById('removedBar');
+  removedBar.hidden = removedCount === 0;
+  document.getElementById('restoreRemovedBtn').textContent = '恢复已移除（' + removedCount + '）';
+
+  // 待做：已派、未做完、未重做、未移除的套
+  let shown = 0;
+  assignedList.forEach(p => {
+    if (isDone(p)) return;
+    if (isRedo(p)) return;
+    if (removedState[p.set_no]) return;
+    shown++;
+    listEl.appendChild(buildCard(p));
+  });
+  emptyEl.hidden = shown !== 0;
+
+  // 已做完清单（可查看，点错了可恢复）
+  const doneItems = assignedList.filter(isDone);
+  const doneBox = document.getElementById('doneListBox');
+  doneBox.hidden = doneItems.length === 0;
+  document.getElementById('doneListSummary').textContent = '已做完（' + doneItems.length + ' 套）· 点开查看（点错了可恢复）';
+  const ul = document.getElementById('doneList');
+  ul.innerHTML = '';
+  doneItems.forEach(p => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.textContent = '第' + p.set_no + '套 · ' + p.title_cn + '（pid: ' + p.pid + '）';
+    const btn = document.createElement('button');
+    btn.className = 'restore';
+    btn.type = 'button';
+    btn.textContent = '恢复';
+    btn.addEventListener('click', () => {
+      delete doneState[String(p.pid)];
+      saveJSON(LS_DONE, doneState);
+      render(assignedList);
+      toast('已恢复该品，会重新出现在列表里');
+    });
+    li.appendChild(span);
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+
+  // 待重做清单（点错了可撤销；复制清单发给总包）
+  const redoItems = assignedList.filter(p => !isDone(p) && isRedo(p));
+  const redoBox = document.getElementById('redoListBox');
+  redoBox.hidden = redoItems.length === 0;
+  document.getElementById('redoListSummary').textContent = '待重做（' + redoItems.length + ' 套）· 点开查看';
+  const rul = document.getElementById('redoList');
+  rul.innerHTML = '';
+  redoItems.forEach(p => {
+    const info = redoState[String(p.pid)] || {};
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.textContent = '第' + p.set_no + '套 · ' + p.title_cn + '（pid: ' + p.pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '');
+    const btn = document.createElement('button');
+    btn.className = 'restore';
+    btn.type = 'button';
+    btn.textContent = '撤销';
+    btn.addEventListener('click', () => {
+      delete redoState[String(p.pid)];
+      saveJSON(LS_REDO, redoState);
+      render(assignedList);
+      toast('已撤销重做，该品回到待发列表');
+    });
+    li.appendChild(span);
+    li.appendChild(btn);
+    rul.appendChild(li);
+  });
+}
+
+function buildCard(p) {
+  const card = document.createElement('article');
+  card.className = 'card';
+  card.id = 'set-' + p.set_no;
+
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  const h2 = document.createElement('h2');
+  h2.textContent = '第' + p.set_no + '套（完整版）';
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  badge.textContent = '待做';
+  head.appendChild(h2);
+  head.appendChild(badge);
+  card.appendChild(head);
+
+  const pidRow = document.createElement('div');
+  pidRow.className = 'row';
+  pidRow.innerHTML = '<span class="label">pid:</span> ';
+  pidRow.appendChild(document.createTextNode(String(p.pid)));
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.type = 'button';
+  copyBtn.textContent = '复制 pid';
+  copyBtn.addEventListener('click', () => copyPid(p.pid, copyBtn));
+  pidRow.appendChild(copyBtn);
+  card.appendChild(pidRow);
+
+  const tRow = document.createElement('div');
+  tRow.className = 'row';
+  tRow.innerHTML = '<span class="label">标题：</span>';
+  tRow.appendChild(document.createTextNode(p.title_cn + ' / ' + p.title_en));
+  card.appendChild(tRow);
+
+  const sRow = document.createElement('div');
+  sRow.className = 'row';
+  sRow.innerHTML = '<span class="label">风格：</span>';
+  sRow.appendChild(document.createTextNode(p.style));
+  card.appendChild(sRow);
+
+  // 成图网格
+  const grid = document.createElement('div');
+  grid.className = 'grid ' + (p.images.length === 4 ? 'c2' : 'c3');
+  p.images.forEach((fn, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const img = document.createElement('img');
+    img.src = imgURL(p, fn);
+    img.alt = '图' + (i + 1);
+    img.loading = 'lazy';
+    img.addEventListener('click', () => openLightbox(p, 'final', i));
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = '图' + (i + 1);
+    cell.appendChild(img);
+    cell.appendChild(tag);
+    grid.appendChild(cell);
+  });
+  card.appendChild(grid);
+
+  // 存到相册
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'save-btn';
+  saveBtn.type = 'button';
+  saveBtn.textContent = '存到相册（' + p.images.length + ' 张原图）';
+  saveBtn.addEventListener('click', () => saveSet(p, saveBtn));
+  card.appendChild(saveBtn);
+
+  const note = document.createElement('div');
+  note.className = 'save-note';
+  note.textContent = '点一下弹出系统分享，选「存储到照片」，整套原图直接进相册';
+  card.appendChild(note);
+
+  // 已做完 / 重做 / 移除（两步确认，防手滑）
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  const doneBtn = document.createElement('button');
+  doneBtn.className = 'done-btn';
+  doneBtn.type = 'button';
+  doneBtn.textContent = '已做完';
+  let armTimer = null;
+  doneBtn.addEventListener('click', () => {
+    if (!doneBtn.classList.contains('arm')) {
+      doneBtn.classList.add('arm');
+      doneBtn.textContent = '确认做完？再点一下';
+      armTimer = setTimeout(() => {
+        doneBtn.classList.remove('arm');
+        doneBtn.textContent = '已做完';
+      }, 3000);
+      return;
+    }
+    clearTimeout(armTimer);
+    doneState[String(p.pid)] = true;   // 按 pid 记：这个 pid 永不再推给本账号
+    saveJSON(LS_DONE, doneState);
+    render(currentAssigned);
+    toast('已做完，这个 pid 不会再推给你');
+  });
+  const redoBtn = document.createElement('button');
+  redoBtn.className = 'redo-btn';
+  redoBtn.type = 'button';
+  redoBtn.textContent = '重做';
+  let armTimerR = null;
+  redoBtn.addEventListener('click', () => {
+    if (!redoBtn.classList.contains('arm')) {
+      redoBtn.classList.add('arm');
+      redoBtn.textContent = '确认重做？再点一下';
+      armTimerR = setTimeout(() => {
+        redoBtn.classList.remove('arm');
+        redoBtn.textContent = '重做';
+      }, 3000);
+      return;
+    }
+    clearTimeout(armTimerR);
+    // 按 pid 记进待重做：图不行要返工，从待发列表消失，不再推给本账号（和已做完一样不再出现）
+    redoState[String(p.pid)] = { time: Date.now(), set_no: p.set_no, title_cn: p.title_cn };
+    saveJSON(LS_REDO, redoState);
+    render(currentAssigned);
+    toast('已标记重做，进待重做清单，不会再推给你');
+  });
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'remove-btn';
+  removeBtn.type = 'button';
+  removeBtn.textContent = '移除';
+  let armTimer2 = null;
+  removeBtn.addEventListener('click', () => {
+    if (!removeBtn.classList.contains('arm')) {
+      removeBtn.classList.add('arm');
+      removeBtn.textContent = '确认移除？';
+      armTimer2 = setTimeout(() => {
+        removeBtn.classList.remove('arm');
+        removeBtn.textContent = '移除';
+      }, 3000);
+      return;
+    }
+    clearTimeout(armTimer2);
+    removedState[p.set_no] = true;
+    saveJSON(LS_REMOVED, removedState);
+    render(currentAssigned);
+    toast('已移除，可点顶部「恢复已移除」找回');
+  });
+  actions.appendChild(doneBtn);
+  actions.appendChild(redoBtn);
+  actions.appendChild(removeBtn);
+  card.appendChild(actions);
+
+  return card;
+}
+
+function copyPid(pid, btn) {
+  const done = () => { btn.textContent = '已复制'; setTimeout(() => { btn.textContent = '复制 pid'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(String(pid)).then(done, () => fallbackCopy(pid, done));
+  } else fallbackCopy(pid, done);
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = String(text);
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+/* ================= 存到相册 =================
+   文件名一定用短文件名（图1.jpg / 主图1.jpg），绝不用 base64 data URI 当文件名，
+   否则 iOS 分享弹窗会坏掉。 */
+function shareSupported() {
+  try {
+    if (!navigator.share || !navigator.canShare) return false;
+    const probe = new File([''], 'probe.png', { type: 'image/png' });
+    return navigator.canShare({ files: [probe] });
+  } catch (e) {
+    return false;
+  }
+}
+
+const blobCache = {}; // set_no -> [File]
+async function fetchSetFiles(p) {
+  if (blobCache[p.set_no]) return blobCache[p.set_no];
+  const files = [];
+  for (let i = 0; i < p.images.length; i++) {
+    const url = imgURL(p, p.images[i]);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('取图失败');
+    const blob = await res.blob();
+    // 文件名用短文件名 p.images[i]（如 图1.jpg），不要用 data URI
+    files.push(new File([blob], p.images[i], { type: blob.type || 'image/jpeg' }));
+  }
+  blobCache[p.set_no] = files;
+  return files;
+}
+
+async function saveSet(p, btn) {
+  if (shareSupported()) {
+    btn.disabled = true;
+    btn.textContent = '正在取图…';
+    try {
+      const files = await fetchSetFiles(p);
+      await navigator.share({ files: files });
+      toast('已弹出分享，选「存储到照片」即可');
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        // 用户取消分享，什么都不做
+      } else {
+        openSaveMode(p, 0);
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '存到相册（' + p.images.length + ' 张原图）';
+    }
+  } else {
+    openSaveMode(p, 0);
+  }
+}
+
+async function saveSingle(p, kind, index) {
+  const list = kind === 'main' ? (p.mains || []) : p.images;
+  const name = list[index];
+  if (!name) return;
+  if (shareSupported()) {
+    try {
+      const res = await fetch(imgURL(p, name));
+      if (!res.ok) throw new Error('取图失败');
+      const blob = await res.blob();
+      const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+      await navigator.share({ files: [file] });
+      toast('已弹出分享，选「存储到照片」即可');
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  closeLightbox();
+  openSaveMode(p, index);
+}
+
+/* ================= 全屏存图模式（长按存相册） ================= */
+const saveModeEl = document.getElementById('saveMode');
+const smImg = document.getElementById('smImg');
+const smCount = document.getElementById('smCount');
+const smPrev = document.getElementById('smPrev');
+const smNext = document.getElementById('smNext');
+let smList = [];   // [{src}]
+let smIndex = 0;
+
+function showSmImage() {
+  smImg.src = smList[smIndex].src;
+  smCount.textContent = '第 ' + (smIndex + 1) + ' / ' + smList.length + ' 张';
+  smPrev.style.visibility = smIndex === 0 ? 'hidden' : 'visible';
+  smNext.textContent = smIndex === smList.length - 1 ? '存完，关闭' : '下一张 →';
+  smNext.classList.toggle('primary', true);
+}
+function openSaveMode(p, startIndex) {
+  smList = p.images.map(fn => ({ src: imgURL(p, fn) }));
+  smIndex = Math.min(startIndex || 0, smList.length - 1);
+  closeLightbox();
+  saveModeEl.hidden = false;
+  document.body.style.overflow = 'hidden';
+  showSmImage();
+}
+function closeSaveMode() {
+  saveModeEl.hidden = true;
+  document.body.style.overflow = '';
+}
+smPrev.addEventListener('click', () => {
+  if (smIndex > 0) { smIndex--; showSmImage(); }
+});
+smNext.addEventListener('click', () => {
+  if (smIndex < smList.length - 1) { smIndex++; showSmImage(); }
+  else { closeSaveMode(); toast('已存完'); }
+});
+document.getElementById('smClose').addEventListener('click', closeSaveMode);
+let touchX = null;
+document.getElementById('smWrap').addEventListener('touchstart', e => {
+  touchX = e.changedTouches[0].clientX;
+}, { passive: true });
+document.getElementById('smWrap').addEventListener('touchend', e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  touchX = null;
+  if (dx < -40 && smIndex < smList.length - 1) { smIndex++; showSmImage(); }
+  else if (dx > 40 && smIndex > 0) { smIndex--; showSmImage(); }
+}, { passive: true });
+
+/* ================= 大图预览 ================= */
+const lightboxEl = document.getElementById('lightbox');
+const lbImg = document.getElementById('lbImg');
+let lbCtx = null;
+function openLightbox(p, kind, index) {
+  const list = kind === 'main' ? (p.mains || []) : p.images;
+  if (!list[index]) return;
+  lbCtx = { p: p, kind: kind, index: index };
+  lbImg.src = imgURL(p, list[index]);
+  lightboxEl.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox() {
+  lightboxEl.hidden = true;
+  if (saveModeEl.hidden) document.body.style.overflow = '';
+  lbCtx = null;
+}
+document.getElementById('lbClose').addEventListener('click', closeLightbox);
+lightboxEl.addEventListener('click', e => {
+  if (e.target === lightboxEl || e.target.classList.contains('ov-img-wrap')) closeLightbox();
+});
+document.getElementById('lbSave').addEventListener('click', () => {
+  if (lbCtx) saveSingle(lbCtx.p, lbCtx.kind, lbCtx.index);
+});
+
+document.getElementById('restoreRemovedBtn').addEventListener('click', () => {
+  removedState = {};
+  saveJSON(LS_REMOVED, removedState);
+  render(currentAssigned);
+  toast('已恢复全部移除的品');
+});
+
+/* 复制待重做清单：发给总包登记。格式里带账号、pid、套号、时间，总包粘贴到 master.html 解析即可。 */
+function copyRedoList(btn) {
+  const items = currentAssigned.filter(p => !isDone(p) && isRedo(p));
+  if (!items.length) { toast('没有待重做的品'); return; }
+  const lines = [ACCT_NAME + ' 待重做（' + items.length + '）：'];
+  items.forEach((p, i) => {
+    const info = redoState[String(p.pid)] || {};
+    lines.push((i + 1) + '. 第' + p.set_no + '套 ' + p.title_cn + ' pid ' + p.pid + (info.time ? '（' + fmtTime(info.time) + '）' : ''));
+  });
+  copyText(lines.join('\n'), btn, '已复制，去发给总包');
+}
+document.getElementById('copyRedoBtn').addEventListener('click', function () {
+  copyRedoList(this);
+});
+
+function copyText(text, btn, okLabel) {
+  const done = () => {
+    if (!btn) return;
+    const old = btn.textContent;
+    btn.textContent = okLabel || '已复制';
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+}
+
+/* ================= 刷新 · 拉下一组 =================
+   做完当前这 10 套后点顶部刷新：按产品顺序（set_no）取接下来 10 个，
+   跳过：已在手里的、自己做完的、自己重做的、自己移除的、总包说别的账号手里/已做完/待重做的（链接 x 参数）。
+   拉到的新组会写进链接（replaceState），刷新页面也不丢。 */
+function refreshBatch() {
+  if (!PRODUCTS.length) { toast('产品库还没加载好，稍等一下再点'); return; }
+  const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
+  if (unfinished > 0) {
+    if (!confirm('这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会回到总包的待派送池子，之后再派。')) return;
+  }
+  const currentSetNos = new Set(currentAssigned.map(p => p.set_no));
+  const next = [];
+  for (const p of PRODUCTS) {
+    if (next.length >= BATCH) break;
+    if (currentSetNos.has(p.set_no)) continue;
+    if (EXCLUDED_SETS.has(p.set_no)) continue;
+    if (isDone(p)) continue;
+    if (isRedo(p)) continue;
+    if (removedState[p.set_no]) continue;
+    next.push(p);
+  }
+  if (!next.length) { toast('没有新的品了，池子空了'); return; }
+  currentAssigned = next;
+  const u = new URL(location.href);
+  u.searchParams.set('s', next.map(p => p.set_no).join(','));
+  history.replaceState(null, '', u);
+  render(currentAssigned);
+  window.scrollTo(0, 0);
+  toast('已拉到下一组：' + next.length + ' 套');
+}
+document.getElementById('refreshBtn').addEventListener('click', refreshBatch);
+
+/* 复制本机状态：把本账号全部已做完和待重做的 pid 复制成文字，发给总包粘贴同步。
+   格式与 master.html 的解析器对应：第一行“账号N 状态同步”，随后“已做完”段和“待重做”段，各带 pid。 */
+function copyStatus(btn) {
+  const donePids = Object.keys(doneState);
+  const redoPids = Object.keys(redoState);
+  if (!donePids.length && !redoPids.length) { toast('本机还没有已做完或待重做的品'); return; }
+  const lines = [ACCT_NAME + ' 状态同步'];
+  lines.push('已做完（' + donePids.length + '）：');
+  donePids.forEach(pid => {
+    const p = PRODUCTS.find(x => String(x.pid) === pid);
+    lines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : ''));
+  });
+  lines.push('待重做（' + redoPids.length + '）：');
+  redoPids.forEach(pid => {
+    const info = redoState[pid] || {};
+    const p = PRODUCTS.find(x => String(x.pid) === pid);
+    lines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : '') + (info.time ? ' ' + fmtTime(info.time) : ''));
+  });
+  copyText(lines.join('\n'), btn, '已复制，去发给总包');
+}
+document.getElementById('copyStatusBtn').addEventListener('click', function () {
+  copyStatus(this);
+});
+
+/* ================= 启动 ================= */
+let currentAssigned = [];
+document.getElementById('acctTitle').textContent = ACCT_NAME + ' · 子工作台';
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.hidden = false;
+  box.textContent = msg;
+  document.getElementById('list').innerHTML = '';
+  document.getElementById('empty').hidden = true;
+}
+
+if (!ACCT_ID || !ASSIGNED_SETS.length) {
+  showError('这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
+  renderStats([]);
+} else {
+  fetch('products.json')
+    .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
+    .then(data => {
+      PRODUCTS = data;
+      currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
+      const missing = ASSIGNED_SETS.length - currentAssigned.length;
+      if (!currentAssigned.length) {
+        showError('链接里的品在产品库里找不到了（可能已被下架）。请找总包重新派单。');
+        renderStats([]);
+        return;
+      }
+      if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
+      render(currentAssigned);
+    })
+    .catch(e => {
+      showError('products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。');
+      renderStats([]);
+    });
+}
+</script>
+</body>
+</html>

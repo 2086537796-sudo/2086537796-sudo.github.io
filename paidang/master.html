@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>总包工作台 · 派单</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f2f2f2; color: #222; font-size: 15px; line-height: 1.5; }
+  button { font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  img { display: block; max-width: 100%; }
+  input, select, textarea { font-family: inherit; }
+
+  header { background: #fff; padding: 10px 12px 12px; border-bottom: 1px solid #e5e5e5; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .sub { font-size: 13px; color: #888; margin-top: 2px; }
+
+  main { padding: 10px 10px 24px; max-width: 760px; margin: 0 auto; }
+  section { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  section h2 { font-size: 16px; margin-bottom: 8px; }
+  section h2 span { font-size: 12px; color: #888; font-weight: 400; }
+
+  .stat-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stat-box { flex: 1; min-width: 80px; background: #f7f7f7; border-radius: 10px; padding: 8px 6px; text-align: center; }
+  .stat-box .num { font-size: 22px; font-weight: 700; color: #e8590c; }
+  .stat-box .num.green { color: #2f9e44; }
+  .stat-box .num.grey { color: #666; }
+  .stat-box .lbl { font-size: 12px; color: #888; }
+
+  .acct-stat { border: 1px solid #e8e8e8; border-radius: 10px; padding: 10px; margin-top: 8px; }
+  .acct-stat .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .acct-stat .name { font-size: 15px; font-weight: 700; }
+  .acct-stat .nums { font-size: 13px; color: #555; }
+  .acct-stat .nums b { color: #e8590c; }
+  .acct-stat .nums b.done { color: #2f9e44; }
+  .bar { height: 5px; background: #eee; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #2f9e44; width: 0%; }
+  .linkrow { display: flex; gap: 8px; margin-top: 8px; }
+  .linkrow input { flex: 1; min-width: 0; height: 36px; border: 1px solid #ddd; border-radius: 8px; padding: 0 8px; font-size: 12px; background: #f7f7f7; color: #555; }
+  .mini-btn { flex: none; height: 36px; padding: 0 12px; border: 1px solid #e8590c; background: #fff; color: #e8590c; border-radius: 8px; font-size: 13px; }
+  .mini-btn:disabled { border-color: #ddd; color: #bbb; }
+
+  .hint { font-size: 12px; color: #888; line-height: 1.7; margin-top: 6px; }
+
+  /* 待重做 */
+  .redo-item { border-top: 1px solid #f0f0f0; padding: 8px 0; font-size: 13px; }
+  .redo-item:first-child { border-top: none; }
+  .redo-item .t { color: #888; font-size: 12px; }
+  .redo-item .row2 { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .redo-item .row2 button { height: 32px; padding: 0 10px; border-radius: 7px; font-size: 12px; border: 1px solid #ddd; background: #fff; color: #555; }
+  .redo-item .row2 button.go { border-color: #2f9e44; color: #2f9e44; }
+  .redo-item .row2 button.del { border-color: #e03131; color: #e03131; }
+  .redo-empty { font-size: 13px; color: #999; padding: 4px 0; }
+  .sync-box textarea { width: 100%; min-height: 76px; border: 1px solid #ddd; border-radius: 8px; padding: 8px 10px; font-size: 13px; resize: vertical; }
+  .sync-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .sync-row select, .sync-row input { height: 38px; border: 1px solid #ddd; border-radius: 8px; padding: 0 10px; font-size: 14px; background: #fff; }
+  .sync-row select { flex: none; }
+  .sync-row input { flex: 1; min-width: 120px; }
+  .sync-row button { flex: none; height: 38px; padding: 0 14px; border-radius: 8px; font-size: 14px; border: none; background: #e8590c; color: #fff; font-weight: 700; }
+  .sync-row button.ghost { background: #fff; border: 1px solid #e8590c; color: #e8590c; font-weight: 400; }
+
+  /* 派单记录 */
+  .log-list { list-style: none; }
+  .log-list li { border-top: 1px solid #f0f0f0; padding: 8px 0; font-size: 13px; color: #444; }
+  .log-list li:first-child { border-top: none; }
+  .log-list .t { color: #888; font-size: 12px; }
+  .log-list .sets { color: #333; word-break: break-word; }
+  .log-empty { font-size: 13px; color: #999; padding: 4px 0; }
+  .log-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .log-actions button { flex: 1; height: 36px; border-radius: 8px; font-size: 13px; border: 1px solid #ddd; background: #fff; color: #666; }
+
+  /* 工具条 */
+  .tools { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tools input { flex: 1; min-width: 140px; height: 40px; border: 1px solid #ddd; border-radius: 8px; padding: 0 10px; font-size: 14px; background: #fff; outline: none; }
+  .tools button { flex: none; height: 40px; padding: 0 12px; border-radius: 8px; font-size: 14px; border: 1px solid #ddd; background: #fff; color: #333; }
+  .tools button.on { background: #e8590c; color: #fff; border-color: #e8590c; }
+  .gen-btn { display: block; width: 100%; height: 52px; border: none; border-radius: 10px; background: #e8590c; color: #fff; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+  .gen-btn:disabled { background: #ccc; }
+  .gen-note { font-size: 12px; color: #888; text-align: center; margin: -6px 0 12px; }
+
+  /* 产品行 */
+  .row { background: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; gap: 10px; align-items: flex-start; }
+  .row.locked { opacity: .75; }
+  .thumb { flex: none; width: 64px; height: 86px; border-radius: 8px; object-fit: cover; background: #eee; }
+  .info { flex: 1; min-width: 0; }
+  .info .title { font-size: 15px; font-weight: 700; word-break: break-word; }
+  .info .meta { font-size: 12px; color: #888; margin-top: 2px; word-break: break-word; }
+  .state-badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px; margin-left: 6px; vertical-align: 1px; }
+  .st-pool { background: #e6f4ea; color: #2f9e44; }
+  .st-assigned { background: #fff3e0; color: #c2410c; }
+  .st-done { background: #eee; color: #888; }
+  .st-redo { background: #fde8e8; color: #c92a2a; }
+  .st-return { background: #fff3e0; color: #e8590c; }
+  .checks { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .check { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #ddd; border-radius: 8px; padding: 6px 10px; font-size: 14px; background: #fff; user-select: none; }
+  .check input { width: 17px; height: 17px; accent-color: #e8590c; }
+  .check.on { border-color: #e8590c; background: #fff3e0; color: #c2410c; }
+  .check.disabled { opacity: .45; }
+  .check .why { font-size: 11px; color: #999; }
+
+  .empty { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
+  footer { padding: 14px 16px 30px; font-size: 12px; color: #999; text-align: center; line-height: 1.8; }
+  .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: rgba(0,0,0,.85); color: #fff; font-size: 14px; padding: 10px 16px; border-radius: 20px; z-index: 300; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+  .toast[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>总包工作台 · 派单</h1>
+  <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
+</header>
+
+<main>
+  <!-- 数据统计 -->
+  <section>
+    <h2>数据统计</h2>
+    <div class="stat-row">
+      <div class="stat-box"><div class="num" id="stTotal">0</div><div class="lbl">产品总数（套）</div></div>
+      <div class="stat-box"><div class="num green" id="stPool">0</div><div class="lbl">待派送池子</div></div>
+      <div class="stat-box"><div class="num" id="stDispatched">0</div><div class="lbl">已派送/进行中</div></div>
+      <div class="stat-box"><div class="num green" id="stDone">0</div><div class="lbl">已做完</div></div>
+      <div class="stat-box"><div class="num" id="stRedo">0</div><div class="lbl">待重做</div></div>
+    </div>
+    <div id="acctStats"></div>
+    <div class="hint">口径：待派送 = 还没派给任何账号的 pid；已派送/进行中 = 已派给某账号、该账号还没做完的 pid；已做完 = 手机上点了已做完并同步回来的 pid；待重做 = 手机上点了重做、等重做的 pid。手机的已做完/重做要先同步回来（见下方），总包这里才能看到。</div>
+  </section>
+
+  <!-- 待重做 -->
+  <section>
+    <h2>待重做 <span>（手机上点了“重做”的 pid，重做完放回待派送池子，优先派回原账号）</span></h2>
+    <div id="redoList"></div>
+    <div class="redo-empty" id="redoEmpty">暂无待重做。手机点“重做”后，让手机把待重做清单复制发给你，在下面粘贴登记。</div>
+    <div class="hint">重做完新版后，点该条的「重做完成，放回待派送」，它会回到池子里并标记优先派回原账号；下次派给原账号时，链接会自动带清除指令，手机上的重做标记会清掉、新版重新出现。</div>
+  </section>
+
+  <!-- 同步手机状态 -->
+  <section>
+    <h2>同步手机状态 <span>（把手机上“复制本机状态”的文字粘贴到这里，一键登记已做完和待重做）</span></h2>
+    <div class="sync-box">
+      <textarea id="syncText" placeholder="粘贴手机上复制的状态文字，例如：&#10;账号1 状态同步&#10;已做完（2）：&#10;- pid 1731670540591927610（第1套）&#10;待重做（1）：&#10;- pid 1730751473246310958（第10套）"></textarea>
+      <div class="sync-row">
+        <button id="syncBtn" type="button">解析并登记</button>
+        <button id="syncClearBtn" class="ghost" type="button">清空输入框</button>
+      </div>
+    </div>
+    <div class="hint">也可以手动登记单个重做：</div>
+    <div class="sync-row">
+      <select id="manualPidSel"></select>
+      <select id="manualAcctSel"></select>
+      <button id="manualRedoBtn" class="ghost" type="button">登记为待重做</button>
+    </div>
+    <div class="hint">同步后：已做完的 pid 会从各账号的派单里移走、以后不再派；待重做的 pid 会进上方「待重做」区、从待派送池子里移走。手机上点的“移除”不同步，只影响手机本地显示。</div>
+  </section>
+
+  <!-- 派单记录 -->
+  <section>
+    <h2>派单记录 <span>（存在本机浏览器里，换电脑/清缓存会丢）</span></h2>
+    <ul class="log-list" id="logList"></ul>
+    <div class="log-empty" id="logEmpty">还没有派单记录。勾选后点「生成派单链接」就会记一条。</div>
+    <div class="log-actions">
+      <button id="clearLogBtn" type="button">清空派单记录</button>
+      <button id="clearAssignBtn" type="button">清空全部勾选</button>
+    </div>
+  </section>
+
+  <div class="tools">
+    <input id="search" type="search" placeholder="搜 pid 或品名…" autocomplete="off">
+    <button id="onlyPoolBtn" type="button">● 只看待派送</button>
+    <button id="selAllBtn" type="button">全选待派送</button>
+    <button id="selNoneBtn" type="button">全不选</button>
+  </div>
+
+  <button id="genBtn" class="gen-btn" type="button">生成派单链接</button>
+  <div class="gen-note">每组 10 个：一个账号一次最多派 10 套。生成后每个账号会得到一条专属链接，复制后发给对应手机。</div>
+
+  <div id="list"></div>
+  <div id="empty" class="empty" hidden>没有符合条件的品</div>
+</main>
+
+<footer>
+  防重复规则：一个 pid 同一时间只派给一个账号。已派给某账号、已被任何账号做完、正在待重做的 pid，<br>
+  都不会再派给别的账号；重做完成的新版只派回当初点重做的那个账号。<br>
+  改派 / 撤回：取消勾选后重新点「生成派单链接」，把新链接发给手机即可（旧链接作废）。<br>
+  每组 10 个：一个账号一次最多拿 10 套，做完 10 套后手机点顶部「刷新」拉下一组。
+</footer>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+/* ================= 账号配置：加账号在这里加一行，最多 8 个 ================= */
+const ACCOUNTS = [
+  { id: 1, name: '账号 1' },
+  { id: 2, name: '账号 2' }
+];
+const BATCH = 10;              // 每组派 10 个
+const IMG_BASE = 'data/';
+const LS_ASSIGN = 'paidang_assign'; // { "1": [set_no...], "2": [...] } —— 进行中的派单
+const LS_DONE = 'paidang_done';     // { pid: {account, time} } —— 已同步回来的已做完
+const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, note, status} ] status: pending | returned
+const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pid], clearedRedo:[pid]} ]
+
+let PRODUCTS = [];
+let assign = {};
+let doneMap = {};
+let redoList = [];
+let log = [];
+let query = '';
+let onlyPool = false;
+let genLinks = {};
+
+function loadJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
+  catch (e) { return fallback; }
+}
+function saveJSON(key, obj) {
+  try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {}
+}
+assign = loadJSON(LS_ASSIGN, {});
+doneMap = loadJSON(LS_DONE, {});
+redoList = loadJSON(LS_REDO, []);
+log = loadJSON(LS_LOG, []);
+ACCOUNTS.forEach(a => { if (!Array.isArray(assign[String(a.id)])) assign[String(a.id)] = []; });
+
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+}
+function enc(path) { return encodeURI(path); }
+function bySetNo(n) { return PRODUCTS.find(p => p.set_no === n); }
+function byPid(pid) { return PRODUCTS.find(p => String(p.pid) === String(pid)); }
+function fmtTime(ts) {
+  const d = new Date(ts);
+  const p = x => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function acctName(id) {
+  const a = ACCOUNTS.find(x => x.id === id);
+  return a ? a.name : ('账号 ' + id);
+}
+function setsOfPid(pid) {
+  return PRODUCTS.filter(p => String(p.pid) === String(pid)).map(p => p.set_no);
+}
+function redoEntry(pid, account) {
+  return redoList.find(r => String(r.pid) === String(pid) && (!account || r.account === account));
+}
+
+/* pid 当前状态（总包视角）：
+   done / redo(待重做) / return(重做回流，在池子里，优先派回原账号) / assigned(已派给某账号) / pool(待派送) */
+function pidState(pid) {
+  pid = String(pid);
+  if (doneMap[pid]) return { state: 'done', account: doneMap[pid].account };
+  const r = redoList.find(x => String(x.pid) === pid);
+  if (r) {
+    if (r.status === 'returned') return { state: 'return', account: r.account };
+    return { state: 'redo', account: r.account };
+  }
+  for (const a of ACCOUNTS) {
+    const arr = assign[String(a.id)] || [];
+    if (arr.some(n => { const p = bySetNo(n); return p && String(p.pid) === pid; })) {
+      return { state: 'assigned', account: a.id };
+    }
+  }
+  return { state: 'pool', account: null };
+}
+/* 这套能不能派给 accountId？返回 {ok, why} */
+function canDispatch(p, accountId) {
+  const st = pidState(p.pid);
+  if (st.state === 'pool') return { ok: true };
+  if (st.state === 'return') {
+    if (st.account === accountId) return { ok: true };
+    return { ok: false, why: '重做回流，只派回' + acctName(st.account) };
+  }
+  if (st.state === 'assigned') return { ok: false, why: '已派给' + acctName(st.account) };
+  if (st.state === 'done') return { ok: false, why: '已做完' };
+  if (st.state === 'redo') return { ok: false, why: '待重做（' + acctName(st.account) + '）' };
+  return { ok: false, why: '' };
+}
+function accountTotal(accountId) {
+  return (assign[String(accountId)] || []).length;
+}
+
+function copyText(text, btn, okLabel) {
+  const done = () => {
+    if (!btn) return;
+    const old = btn.textContent;
+    btn.textContent = okLabel || '已复制';
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+/* 生成某账号的专属链接：acct.html?a=N&s=...&x=...&cr=...
+   s = 本次派的 set_no（最多 10 个）；x = 刷新时要跳过的 set_no（别的账号手里的 + 已做完 + 待重做）；
+   cr = 要清除重做标记的 pid（只在重做回流重新派给原账号时带） */
+function buildLink(accountId) {
+  const sets = (assign[String(accountId)] || []).slice().sort((a, b) => a - b);
+  if (!sets.length) return { url: '', cr: [] };
+  const cr = [];
+  sets.forEach(n => {
+    const p = bySetNo(n);
+    if (!p) return;
+    const r = redoEntry(p.pid, accountId);
+    if (r && r.status === 'returned') cr.push(String(p.pid));
+  });
+  // x：别的账号进行中的 set、已做完的 set、待重做的 set（刷新时跳过，防重复）
+  const xSet = new Set();
+  ACCOUNTS.forEach(a => {
+    if (a.id === accountId) return;
+    (assign[String(a.id)] || []).forEach(n => xSet.add(n));
+  });
+  Object.keys(doneMap).forEach(pid => setsOfPid(pid).forEach(n => xSet.add(n)));
+  redoList.forEach(r => { if (r.status === 'pending') setsOfPid(r.pid).forEach(n => xSet.add(n)); });
+  sets.forEach(n => xSet.delete(n)); // 本次派的不要排除
+  const x = Array.from(xSet).sort((a, b) => a - b);
+  let base = location.pathname.replace(/(master|index)\.html$/, 'acct.html');
+  if (!base.endsWith('acct.html')) base = base.replace(/\/?$/, '/') + 'acct.html';
+  let url = location.origin + base + '?a=' + accountId + '&s=' + sets.join(',');
+  if (x.length) url += '&x=' + x.join(',');
+  if (cr.length) url += '&cr=' + cr.join(',');
+  return { url: url, cr: cr };
+}
+
+function renderStats() {
+  const total = PRODUCTS.length;
+  const pids = [...new Set(PRODUCTS.map(p => String(p.pid)))];
+  let pool = 0, dispatched = 0, done = 0, redo = 0;
+  pids.forEach(pid => {
+    const st = pidState(pid);
+    if (st.state === 'pool' || st.state === 'return') pool++;
+    else if (st.state === 'assigned') dispatched++;
+    else if (st.state === 'done') done++;
+    else if (st.state === 'redo') redo++;
+  });
+  document.getElementById('stTotal').textContent = total;
+  document.getElementById('stPool').textContent = pool;
+  document.getElementById('stDispatched').textContent = dispatched;
+  document.getElementById('stDone').textContent = done;
+  document.getElementById('stRedo').textContent = redo;
+
+  const wrap = document.getElementById('acctStats');
+  wrap.innerHTML = '';
+  ACCOUNTS.forEach(a => {
+    const sets = assign[String(a.id)] || [];
+    const doneCount = Object.values(doneMap).filter(d => d.account === a.id).length;
+    const totalForAcct = sets.length + doneCount;
+    const pct = totalForAcct ? Math.round(doneCount / totalForAcct * 100) : 0;
+    const box = document.createElement('div');
+    box.className = 'acct-stat';
+    const top = document.createElement('div');
+    top.className = 'top';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = a.name + '（手里 ' + sets.length + ' / ' + BATCH + ' 套）';
+    const nums = document.createElement('span');
+    nums.className = 'nums';
+    nums.innerHTML = '已做完 <b class="done">' + doneCount + '</b> · 完成度 <b class="done">' + pct + '%</b>';
+    top.appendChild(name); top.appendChild(nums);
+    box.appendChild(top);
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    const barI = document.createElement('i');
+    barI.style.width = pct + '%';
+    bar.appendChild(barI);
+    box.appendChild(bar);
+    const link = genLinks[String(a.id)] || '';
+    const linkRow = document.createElement('div');
+    linkRow.className = 'linkrow';
+    const input = document.createElement('input');
+    input.readOnly = true;
+    input.placeholder = link ? '' : '未生成：先勾选待派送的品，再点「生成派单链接」';
+    input.value = link || '';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'mini-btn';
+    copyBtn.type = 'button';
+    copyBtn.textContent = '复制链接';
+    copyBtn.disabled = !link;
+    copyBtn.addEventListener('click', () => copyText(link, copyBtn));
+    linkRow.appendChild(input);
+    linkRow.appendChild(copyBtn);
+    box.appendChild(linkRow);
+    wrap.appendChild(box);
+  });
+}
+
+function renderRedo() {
+  const box = document.getElementById('redoList');
+  const empty = document.getElementById('redoEmpty');
+  box.innerHTML = '';
+  const pending = redoList.filter(r => r.status === 'pending');
+  const returned = redoList.filter(r => r.status === 'returned');
+  empty.hidden = redoList.length !== 0;
+  redoList.forEach(r => {
+    const p = byPid(r.pid);
+    const div = document.createElement('div');
+    div.className = 'redo-item';
+    const t = document.createElement('div');
+    t.className = 't';
+    t.textContent = fmtTime(r.time) + ' · ' + acctName(r.account) + ' · ' + (r.status === 'returned' ? '重做完成，已回待派送池子' : '待重做');
+    const main = document.createElement('div');
+    main.textContent = '第' + (r.set_no || '?') + '套 · ' + (r.title_cn || (p ? p.title_cn : '')) + '（pid: ' + r.pid + '）' + (r.note ? ' · ' + r.note : '');
+    const row2 = document.createElement('div');
+    row2.className = 'row2';
+    if (r.status === 'pending') {
+      const goBtn = document.createElement('button');
+      goBtn.className = 'go';
+      goBtn.type = 'button';
+      goBtn.textContent = '重做完成，放回待派送';
+      goBtn.addEventListener('click', () => {
+        r.status = 'returned';
+        r.returnedTime = Date.now();
+        saveJSON(LS_REDO, redoList);
+        render();
+        toast('已放回待派送池子，优先派回' + acctName(r.account));
+      });
+      row2.appendChild(goBtn);
+    } else {
+      const tag = document.createElement('span');
+      tag.style.cssText = 'font-size:12px;color:#e8590c;align-self:center;';
+      tag.textContent = '在池子里，优先派回' + acctName(r.account);
+      row2.appendChild(tag);
+    }
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del';
+    delBtn.type = 'button';
+    delBtn.textContent = '删除这条';
+    delBtn.addEventListener('click', () => {
+      if (!confirm('删除这条待重做记录吗？（只清总包这里的记录，不影响手机上的标记）')) return;
+      redoList = redoList.filter(x => x !== r);
+      saveJSON(LS_REDO, redoList);
+      render();
+    });
+    row2.appendChild(delBtn);
+    div.appendChild(t);
+    div.appendChild(main);
+    div.appendChild(row2);
+    box.appendChild(div);
+  });
+}
+
+function renderLog() {
+  const ul = document.getElementById('logList');
+  const empty = document.getElementById('logEmpty');
+  ul.innerHTML = '';
+  empty.hidden = log.length !== 0;
+  log.slice().reverse().forEach(entry => {
+    const li = document.createElement('li');
+    const t = document.createElement('div');
+    t.className = 't';
+    t.textContent = fmtTime(entry.time) + ' · ' + acctName(entry.account) + ' · 派了 ' + entry.sets.length + ' 套' + (entry.clearedRedo && entry.clearedRedo.length ? ' · 重做回流清除 ' + entry.clearedRedo.length + ' 个 pid' : '');
+    const s = document.createElement('div');
+    s.className = 'sets';
+    s.textContent = '第' + entry.sets.join('套、第') + '套';
+    const p = document.createElement('div');
+    p.className = 'sets';
+    p.textContent = 'pid: ' + entry.pids.join('、');
+    li.appendChild(t); li.appendChild(s); li.appendChild(p);
+    ul.appendChild(li);
+  });
+}
+
+function stateBadge(p) {
+  const st = pidState(p.pid);
+  const b = document.createElement('span');
+  if (st.state === 'pool') { b.className = 'state-badge st-pool'; b.textContent = '待派送'; }
+  else if (st.state === 'assigned') { b.className = 'state-badge st-assigned'; b.textContent = '已派：' + acctName(st.account); }
+  else if (st.state === 'done') { b.className = 'state-badge st-done'; b.textContent = '已做完'; }
+  else if (st.state === 'redo') { b.className = 'state-badge st-redo'; b.textContent = '待重做：' + acctName(st.account); }
+  else if (st.state === 'return') { b.className = 'state-badge st-return'; b.textContent = '重做回流→' + acctName(st.account); }
+  return b;
+}
+
+function renderList() {
+  const listEl = document.getElementById('list');
+  const emptyEl = document.getElementById('empty');
+  listEl.innerHTML = '';
+  const q = query.trim().toLowerCase();
+  let shown = 0;
+  PRODUCTS.forEach(p => {
+    if (q && !(String(p.pid).includes(q) || p.title_cn.toLowerCase().includes(q) || p.title_en.toLowerCase().includes(q))) return;
+    const st = pidState(p.pid);
+    if (onlyPool && !(st.state === 'pool' || st.state === 'return')) return;
+    shown++;
+    const row = document.createElement('div');
+    row.className = 'row' + (st.state === 'done' ? ' locked' : '');
+    const thumb = document.createElement('img');
+    thumb.className = 'thumb';
+    thumb.src = enc(IMG_BASE + p.folder + '/' + p.images[0]);
+    thumb.alt = p.title_cn;
+    thumb.loading = 'lazy';
+    row.appendChild(thumb);
+    const info = document.createElement('div');
+    info.className = 'info';
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = '第' + p.set_no + '套 · ' + p.title_cn;
+    title.appendChild(stateBadge(p));
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = 'pid: ' + p.pid + ' ｜ ' + p.style + ' ｜ ' + p.images.length + ' 张图';
+    info.appendChild(title);
+    info.appendChild(meta);
+    const checks = document.createElement('div');
+    checks.className = 'checks';
+    ACCOUNTS.forEach(a => {
+      const label = document.createElement('label');
+      const on = (assign[String(a.id)] || []).includes(p.set_no);
+      const gate = canDispatch(p, a.id);
+      // 已勾上的可以取消；没勾上的要符合派单规则且不超过 10 个
+      const disabled = !on && !gate.ok;
+      label.className = 'check' + (on ? ' on' : '') + (disabled ? ' disabled' : '');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = on;
+      cb.disabled = disabled;
+      cb.addEventListener('change', () => {
+        const arr = assign[String(a.id)] || (assign[String(a.id)] = []);
+        if (cb.checked) {
+          if (accountTotal(a.id) >= BATCH) {
+            cb.checked = false;
+            toast(acctName(a.id) + '一次最多派 ' + BATCH + ' 套，先做完手里的再派');
+            return;
+          }
+          const g = canDispatch(p, a.id);
+          if (!g.ok) {
+            cb.checked = false;
+            toast('不能派：' + g.why);
+            return;
+          }
+          if (!arr.includes(p.set_no)) arr.push(p.set_no);
+        } else {
+          const i = arr.indexOf(p.set_no);
+          if (i !== -1) arr.splice(i, 1);
+        }
+        saveJSON(LS_ASSIGN, assign);
+        label.classList.toggle('on', cb.checked);
+        renderStats();
+        renderList();
+      });
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode('派给' + a.name));
+      if (disabled) {
+        const why = document.createElement('span');
+        why.className = 'why';
+        why.textContent = '（' + gate.why + '）';
+        label.appendChild(why);
+      }
+      checks.appendChild(label);
+    });
+    info.appendChild(checks);
+    row.appendChild(info);
+    listEl.appendChild(row);
+  });
+  emptyEl.hidden = shown !== 0;
+}
+
+function render() {
+  renderStats();
+  renderRedo();
+  renderLog();
+  renderList();
+}
+
+/* 同步手机状态：粘贴手机上“复制本机状态”的文字，解析已做完和待重做的 pid，登记到总包。
+   文本格式由手机端生成，含“账号N”“已做完”“待重做”和 pid 数字。 */
+function syncFromText(text) {
+  const acctM = text.match(/账号\s*(\d+)/);
+  const account = acctM ? parseInt(acctM[1], 10) : null;
+  if (!account || !ACCOUNTS.some(a => a.id === account)) {
+    toast('没认出是哪个账号：文字里要有“账号 N”');
+    return;
+  }
+  // 按“已做完 / 待重做”两段切分
+  const doneIdx = text.indexOf('已做完');
+  const redoIdx = text.indexOf('待重做');
+  let donePids = [], redoPids = [];
+  const pidRe = /\b(\d{19})\b/g;
+  function collect(seg) {
+    const out = [];
+    let m;
+    while ((m = pidRe.exec(seg)) !== null) out.push(m[1]);
+    return [...new Set(out)];
+  }
+  if (doneIdx !== -1) {
+    const seg = redoIdx !== -1 && redoIdx > doneIdx ? text.slice(doneIdx, redoIdx) : text.slice(doneIdx);
+    donePids = collect(seg);
+  }
+  if (redoIdx !== -1) {
+    const seg = text.slice(redoIdx);
+    redoPids = collect(seg);
+  }
+  // 去掉同时出现在两段里的（以待重做为准，不记做完）
+  donePids = donePids.filter(pid => !redoPids.includes(pid));
+  let nDone = 0, nRedo = 0;
+  donePids.forEach(pid => {
+    const p = byPid(pid);
+    if (!p) return;
+    if (!doneMap[pid]) nDone++;
+    doneMap[pid] = { account: account, time: Date.now() };
+    // 做完的 pid 从所有账号的派单里移走
+    ACCOUNTS.forEach(a => {
+      assign[String(a.id)] = (assign[String(a.id)] || []).filter(n => {
+        const pp = bySetNo(n);
+        return !(pp && String(pp.pid) === pid);
+      });
+    });
+    // 若它也在待重做里，清掉（做完了就不用重做）
+    redoList = redoList.filter(r => String(r.pid) !== pid);
+  });
+  redoPids.forEach(pid => {
+    const p = byPid(pid);
+    if (!p) return;
+    if (!redoEntry(pid, account)) {
+      redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: '', status: 'pending' });
+      nRedo++;
+    }
+    // 待重做的 pid 从该账号的派单里移走（回收），等重做完再派回
+    ACCOUNTS.forEach(a => {
+      assign[String(a.id)] = (assign[String(a.id)] || []).filter(n => {
+        const pp = bySetNo(n);
+        return !(pp && String(pp.pid) === pid);
+      });
+    });
+  });
+  saveJSON(LS_DONE, doneMap);
+  saveJSON(LS_REDO, redoList);
+  saveJSON(LS_ASSIGN, assign);
+  render();
+  toast('已登记：已做完 ' + nDone + ' 个，待重做 ' + nRedo + ' 个（' + acctName(account) + '）');
+}
+
+document.getElementById('syncBtn').addEventListener('click', () => {
+  const text = document.getElementById('syncText').value;
+  if (!text.trim()) { toast('先粘贴手机上复制的状态文字'); return; }
+  syncFromText(text);
+});
+document.getElementById('syncClearBtn').addEventListener('click', () => {
+  document.getElementById('syncText').value = '';
+});
+
+function fillManualSelects() {
+  const sel = document.getElementById('manualPidSel');
+  sel.innerHTML = '';
+  PRODUCTS.forEach(p => {
+    const o = document.createElement('option');
+    o.value = String(p.pid);
+    o.textContent = '第' + p.set_no + '套 · ' + p.title_cn + '（' + p.pid + '）';
+    sel.appendChild(o);
+  });
+  const asel = document.getElementById('manualAcctSel');
+  asel.innerHTML = '';
+  ACCOUNTS.forEach(a => {
+    const o = document.createElement('option');
+    o.value = String(a.id);
+    o.textContent = a.name;
+    asel.appendChild(o);
+  });
+}
+document.getElementById('manualRedoBtn').addEventListener('click', () => {
+  const pid = document.getElementById('manualPidSel').value;
+  const account = parseInt(document.getElementById('manualAcctSel').value, 10);
+  const p = byPid(pid);
+  if (!p) return;
+  if (redoEntry(pid, account)) { toast('这条已经在待重做里了'); return; }
+  redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: '手动登记', status: 'pending' });
+  ACCOUNTS.forEach(a => {
+    assign[String(a.id)] = (assign[String(a.id)] || []).filter(n => {
+      const pp = bySetNo(n);
+      return !(pp && String(pp.pid) === pid);
+    });
+  });
+  saveJSON(LS_REDO, redoList);
+  saveJSON(LS_ASSIGN, assign);
+  render();
+  toast('已登记待重做：' + p.title_cn + '（' + acctName(account) + '）');
+});
+
+document.getElementById('genBtn').addEventListener('click', () => {
+  genLinks = {};
+  let any = false;
+  let capped = false;
+  ACCOUNTS.forEach(a => {
+    // 只保留可派的、且不超过 10 个（按产品顺序取前 10）
+    let sets = (assign[String(a.id)] || []).slice().sort((x, y) => x - y);
+    const okSets = [];
+    sets.forEach(n => {
+      const p = bySetNo(n);
+      if (!p) return;
+      if (canDispatch(p, a.id).ok) okSets.push(n);
+    });
+    if (okSets.length > BATCH) { capped = true; okSets.length = BATCH; }
+    if (!okSets.length) return;
+    assign[String(a.id)] = okSets;
+    const built = buildLink(a.id);
+    if (!built.url) return;
+    any = true;
+    genLinks[String(a.id)] = built.url;
+    const pids = okSets.map(n => { const p = bySetNo(n); return p ? String(p.pid) : String(n); });
+    log.push({ time: Date.now(), account: a.id, sets: okSets.slice(), pids: pids, clearedRedo: built.cr || [] });
+    // 重做回流已重新派给原账号：清掉总包这里的待重做标记（手机端由链接里的 cr 指令清掉）
+    if (built.cr && built.cr.length) {
+      redoList = redoList.filter(r => !(r.status === 'returned' && built.cr.includes(String(r.pid)) && r.account === a.id));
+    }
+  });
+  if (!any) { toast('先勾选待派送的品（一次最多 ' + BATCH + ' 套/账号）'); return; }
+  saveJSON(LS_ASSIGN, assign);
+  saveJSON(LS_REDO, redoList);
+  saveJSON(LS_LOG, log);
+  render();
+  toast(capped ? '已生成（每组最多 ' + BATCH + ' 套，超出部分没派）' : '派单链接已生成，复制后发给对应手机');
+});
+
+document.getElementById('search').addEventListener('input', e => { query = e.target.value; renderList(); });
+document.getElementById('onlyPoolBtn').addEventListener('click', function () {
+  onlyPool = !onlyPool;
+  this.classList.toggle('on', onlyPool);
+  renderList();
+});
+document.getElementById('selAllBtn').addEventListener('click', () => {
+  // 全选待派送：按产品顺序，每个账号最多补到 10 套
+  const q = query.trim().toLowerCase();
+  PRODUCTS.forEach(p => {
+    if (q && !(String(p.pid).includes(q) || p.title_cn.toLowerCase().includes(q) || p.title_en.toLowerCase().includes(q))) return;
+    ACCOUNTS.forEach(a => {
+      if (accountTotal(a.id) >= BATCH) return;
+      if (!canDispatch(p, a.id).ok) return;
+      const arr = assign[String(a.id)] || (assign[String(a.id)] = []);
+      if (!arr.includes(p.set_no)) arr.push(p.set_no);
+    });
+  });
+  saveJSON(LS_ASSIGN, assign);
+  render();
+});
+document.getElementById('selNoneBtn').addEventListener('click', () => {
+  ACCOUNTS.forEach(a => { assign[String(a.id)] = []; });
+  saveJSON(LS_ASSIGN, assign);
+  render();
+});
+document.getElementById('clearLogBtn').addEventListener('click', () => {
+  if (!confirm('确定清空派单记录吗？（勾选不动，只清记录）')) return;
+  log = [];
+  saveJSON(LS_LOG, log);
+  render();
+});
+document.getElementById('clearAssignBtn').addEventListener('click', () => {
+  if (!confirm('确定清空全部勾选吗？')) return;
+  ACCOUNTS.forEach(a => { assign[String(a.id)] = []; });
+  saveJSON(LS_ASSIGN, assign);
+  render();
+});
+
+fetch('products.json')
+  .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
+  .then(data => {
+    PRODUCTS = data;
+    fillManualSelects();
+    render();
+  })
+  .catch(e => {
+    document.getElementById('list').innerHTML = '<div class="empty">products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。</div>';
+  });
+</script>
+</body>
+</html>
