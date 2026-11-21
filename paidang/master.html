@@ -124,7 +124,7 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" style="color:#999;">版本 v1.0.17 · 2026-11-22 · 如果这里显示的不是 v1.0.17，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" style="color:#999;">版本 v1.0.18 · 2026-11-22 · 如果这里显示的不是 v1.0.18，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <main>
@@ -259,7 +259,7 @@ const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, 
 const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pid], clearedRedo:[pid]} ]
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
-const APP_VERSION = 'v1.0.17';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.18';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -449,14 +449,12 @@ function computeAutoQueues() {
       .filter(n => bySetNo(n));
     if (!retSets.length) return;
     const rest = q.filter(n => !retSets.includes(n));
-    const restPids = new Set(rest.map(n => { const p = bySetNo(n); return p ? String(p.pid) : ''; }));
     const toInsert = retSets.filter(n => {
       const p = bySetNo(n);
       if (!p) return false;
       const pid = String(p.pid);
       if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
-      if (restPids.has(pid)) return false; // 同 pid 的另一套已在队里，不重复占位
-      // 别的号队里已有这个 pid（另一套），不能插
+      // 别的号队里已有这个 pid（另一套），不能插（同品只留一个号）
       for (const o of ACCOUNTS) {
         if (o.id === a.id) continue;
         if ((queues[String(o.id)] || []).some(m => { const pp = bySetNo(m); return pp && String(pp.pid) === pid; })) return false;
@@ -465,16 +463,73 @@ function computeAutoQueues() {
     });
     queues[String(a.id)] = toInsert.concat(rest);
   });
-  // 3. 新套增量追加：符合条件的套（同 pid 的两套都要派）按 set_no 从大到小，
-  //    轮流分给各号——优先分给当前队里套数最少、且没有这个 pid 的号；新套只往队尾追加。
-  //    同 pid 的两套必定分到不同账号；同一号的队里绝不出现同 pid 的两套。
+  // 2.5 加急广播：products.json 里 urgent:true 的套，插到每个号队首。
+  //    同时把该 pid 的其它非加急套从各队里清掉（只留加急那套，避免旧套先被做掉、
+  //    把 pid 标成已做完导致加急套死掉；重做回流的套除外）。这样 8 台手机刷新后队首都直接看到这两条。
+  const retRedoSetNos = new Set(redoList.filter(r => r.status === 'returned').map(r => r.set_no));
+  PRODUCTS.filter(p => p.urgent && bySetNo(p.set_no)).sort((a, b) => b.set_no - a.set_no).forEach(p => {
+    const pid = String(p.pid);
+    if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return;
+    ACCOUNTS.forEach(a => {
+      let q = queues[String(a.id)];
+      q = q.filter(n => {
+        const pp = bySetNo(n);
+        if (!pp || String(pp.pid) !== pid) return true;
+        if (pp.urgent) return true;
+        if (retRedoSetNos.has(n)) return true;
+        return false;
+      });
+      queues[String(a.id)] = q;
+      if (q.includes(p.set_no)) return;
+      q.unshift(p.set_no);
+    });
+  });
+  // 2.6 同品归一（2026-11-22 用户铁规：一个品绝不能派到两个号上）。
+  //    若同一个 pid 的套散在多个号的队里，全部收到 set_no 最小的那套所在的号；
+  //    其它号里的同 pid 套清掉（只清队里的，未做的套不受影响，下轮由第 3 步重新归位）。
+  //    例外：加急广播的 pid 不动（加急就是要 8 个号队首都有，见 2.5）。
+  {
+    const urgentPids = new Set(PRODUCTS.filter(p => p.urgent).map(p => String(p.pid)));
+    const pidAccounts = {};
+    ACCOUNTS.forEach(a => {
+      (queues[String(a.id)] || []).forEach(n => {
+        const p = bySetNo(n);
+        if (!p) return;
+        const pid = String(p.pid);
+        if (urgentPids.has(pid)) return;
+        (pidAccounts[pid] = pidAccounts[pid] || []).push({ a: a.id, n });
+      });
+    });
+    Object.keys(pidAccounts).forEach(pid => {
+      const list = pidAccounts[pid];
+      const accounts = [...new Set(list.map(x => x.a))];
+      if (accounts.length < 2) return;
+      // 目标号：持有该 pid 最小 set_no 的号
+      const target = list.slice().sort((x, y) => x.n - y.n)[0].a;
+      const move = list.filter(x => x.a !== target).map(x => x.n).sort((x, y) => x - y);
+      if (!move.length) return;
+      ACCOUNTS.forEach(a => {
+        if (a.id === target) return;
+        queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => !move.includes(n));
+      });
+      const tq = queues[String(target)] || [];
+      move.forEach(n => { if (!tq.includes(n)) tq.push(n); });
+      queues[String(target)] = tq;
+    });
+  }
+  // 3. 新套增量追加：符合条件的套按 set_no 从大到小，只往队尾追加。
+  //    一个 pid 的所有套只派给同一个号（2026-11-22 用户铁规：绝不把同品派到两个号上）：
+  //    若该 pid 已有套在某个号的队里，新套就追加到同一个号；否则分给当前队里套数最少的号。
   //    重做回流的套归第 2 步管，第 3 步不碰（避免把应回原号的重做套派给别的号）。
   const retRedoSets = new Set(redoList.filter(r => r.status === 'returned').map(r => r.set_no));
+  const urgentPids = new Set(PRODUCTS.filter(p => p.urgent).map(p => String(p.pid)));
   const candidates = PRODUCTS
     .filter(p => {
       const pid = String(p.pid);
       if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
       if (retRedoSets.has(p.set_no)) return false;
+      // 加急 pid 的非加急套不派（2.5 已把旧套清掉，这里不再补回来，否则旧套会先被做掉）
+      if (urgentPids.has(pid) && !p.urgent) return false;
       for (const a of ACCOUNTS) {
         if ((queues[String(a.id)] || []).includes(p.set_no)) return false;
       }
@@ -483,14 +538,21 @@ function computeAutoQueues() {
     .sort((x, y) => y.set_no - x.set_no);
   candidates.forEach(p => {
     const pid = String(p.pid);
+    // 先找已有该 pid 的号（同品归一号）；没有则分给最短的队
     let best = null, bestLen = Infinity;
     ACCOUNTS.forEach(a => {
       const q = queues[String(a.id)] || [];
-      const hasPid = q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; });
-      if (hasPid) return;
-      if (q.length < bestLen) { bestLen = q.length; best = a; }
+      if (q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; })) {
+        best = a; bestLen = -1; // 已有同品的号优先（不管队多长）
+      }
     });
-    if (!best) return; // 没有能接的号（一个 pid 最多两套，8 个号总有空位；防呆）
+    if (!best) {
+      ACCOUNTS.forEach(a => {
+        const q = queues[String(a.id)] || [];
+        if (q.length < bestLen) { bestLen = q.length; best = a; }
+      });
+    }
+    if (!best) return;
     queues[String(best.id)].push(p.set_no);
   });
   saveAutoQueues(queues);
