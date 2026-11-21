@@ -47,6 +47,7 @@
   .redo-item { border-top: 1px solid #f0f0f0; padding: 8px 0; font-size: 13px; }
   .redo-item:first-child { border-top: none; }
   .redo-item .t { color: #888; font-size: 12px; }
+  .redo-item .reasons { color: #e8590c; font-weight: 700; font-size: 13px; margin-top: 2px; }
   .redo-item .row2 { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .redo-item .row2 button { height: 32px; padding: 0 10px; border-radius: 7px; font-size: 12px; border: 1px solid #ddd; background: #fff; color: #555; }
   .redo-item .row2 button.go { border-color: #2f9e44; color: #2f9e44; }
@@ -162,8 +163,13 @@
   <section>
     <h2>待重做 <span>（手机上点了“重做”的 pid，重做完放回待派送池子，优先派回原账号）</span></h2>
     <div id="redoList"></div>
-    <div class="redo-empty" id="redoEmpty">暂无待重做。手机点“重做”后，让手机把待重做清单复制发给你，在下面粘贴登记。</div>
-    <div class="hint">重做完新版后，点该条的「重做完成，放回待派送」，它会回到池子里并标记优先派回原账号；下次派给原账号时，链接会自动带清除指令，手机上的重做标记会清掉、新版重新出现。</div>
+    <div class="redo-empty" id="redoEmpty">暂无待重做。手机点“重做”后会自动同步过来，也可在下面粘贴手机复制的状态登记。</div>
+    <div class="hint">重做完新版后，点该条的「重做完成，放回待派送」，它会回到池子里并标记优先派回原账号；下次派给原账号时，链接会自动带清除指令，手机上的重做标记会清掉、新版重新出现。每条下面的重做理由是生图重做时的改点。</div>
+    <div class="sync-row" style="margin-top:8px;">
+      <button id="pullBtn" type="button">🔄 立即同步（拉各手机最新状态）</button>
+      <span id="pullStatus" style="font-size:12px;color:#888;align-self:center;"></span>
+    </div>
+    <div class="hint">手机点“提交给总包”后，总包这里每 30 秒自动拉一次，也可点“立即同步”马上拉。</div>
   </section>
 
   <!-- 同步手机状态 -->
@@ -180,6 +186,7 @@
     <div class="sync-row">
       <select id="manualPidSel"></select>
       <select id="manualAcctSel"></select>
+      <input id="manualReasons" type="text" placeholder="重做理由（可多选，用、分隔，如：外观不对、尺寸不对）" style="flex:2;min-width:180px;height:38px;border:1px solid #ddd;border-radius:7px;padding:0 10px;font-size:13px;">
       <button id="manualRedoBtn" class="ghost" type="button">登记为待重做</button>
     </div>
     <div class="hint">同步后：已做完的 pid 会从各账号的派单里移走、以后不再派；待重做的 pid 会进上方「待重做」区、从待派送池子里移走。手机上点的“移除”不同步，只影响手机本地显示。</div>
@@ -237,9 +244,35 @@ const BATCH = 10;              // 每组派 10 个
 const IMG_BASE = 'data/';
 const LS_ASSIGN = 'paidang_assign'; // { "1": [set_no...], "2": [...] } —— 进行中的派单
 const LS_DONE = 'paidang_done';     // { pid: {account, time} } —— 已同步回来的已做完
-const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, note, status} ] status: pending | returned
+const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, note, status, reasons} ] status: pending | returned
 const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pid], clearedRedo:[pid]} ]
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
+
+/* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
+const REDO_REASONS = [
+  { code: 'look', label: '外观不对' },
+  { code: 'size', label: '尺寸不对' },
+  { code: 'acc', label: '配件不对' },
+  { code: 'clip', label: '穿模' },
+  { code: 'text', label: '文字问题' },
+  { code: 'other', label: '其他' }
+];
+function reasonLabel(code) { const r = REDO_REASONS.find(x => x.code === code); return r ? r.label : code; }
+function reasonsText(codes) { return (codes || []).map(reasonLabel).join('、'); }
+function parseReasons(str) {
+  if (!str) return [];
+  const labels = str.split(/[、，,；;]/).map(s => s.trim()).filter(Boolean);
+  return labels.map(l => {
+    const r = REDO_REASONS.find(x => x.label === l || x.code === l);
+    return r ? r.code : 'other';
+  }).filter((v, i, a) => a.indexOf(v) === i);
+}
+
+/* 自动同步通道：8 个号的格子 ID（jsonblob.com），总包定时去拉各手机推上来的状态。
+   为空时不同步，只走手动粘贴。 */
+const SYNC_BLOBS = { 1: '', 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '' }; // TODO: 填入 8 个 jsonblob ID
+let lastPullTime = 0;
+let lastPullOk = false;
 function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
 let mode = 'manual';
 let autoQueues = {};   // { "1": [set_no...], "2": [...] } —— 自动派单的队（内存缓存，与 localStorage 同步）
@@ -677,6 +710,13 @@ function renderRedo() {
     t.textContent = fmtTime(r.time) + ' · ' + acctName(r.account) + ' · ' + (r.status === 'returned' ? '重做完成，已回待派送池子' : '待重做');
     const main = document.createElement('div');
     main.textContent = '第' + (r.set_no || '?') + '套 · ' + (r.title_cn || (p ? p.title_cn : '')) + '（pid: ' + r.pid + '）' + (r.note ? ' · ' + r.note : '');
+    const reasonStr = reasonsText(r.reasons);
+    let rd = null;
+    if (reasonStr) {
+      rd = document.createElement('div');
+      rd.className = 'reasons';
+      rd.textContent = '重做理由：' + reasonStr;
+    }
     const row2 = document.createElement('div');
     row2.className = 'row2';
     if (r.status === 'pending') {
@@ -712,6 +752,7 @@ function renderRedo() {
     row2.appendChild(delBtn);
     div.appendChild(t);
     div.appendChild(main);
+    if (rd) div.appendChild(rd);
     div.appendChild(row2);
     box.appendChild(div);
   });
@@ -891,9 +932,22 @@ function syncFromText(text) {
     const seg = redoIdx !== -1 && redoIdx > doneIdx ? text.slice(doneIdx, redoIdx) : text.slice(doneIdx);
     donePids = collect(seg);
   }
+  // 待重做每行的理由 [..] 和备注，逐行解析
+  const redoMeta = {};
   if (redoIdx !== -1) {
     const seg = text.slice(redoIdx);
     redoPids = collect(seg);
+    seg.split('\n').forEach(line => {
+      const m = line.match(/\b(\d{19})\b/);
+      if (!m) return;
+      const pid = m[1];
+      const rM = line.match(/\[([^\]]+)\]/);
+      const nM = line.match(/备注：(.*)$/);
+      redoMeta[pid] = {
+        reasons: rM ? parseReasons(rM[1]) : [],
+        note: nM ? nM[1].trim() : ''
+      };
+    });
   }
   // 去掉同时出现在两段里的（以待重做为准，不记做完）
   donePids = donePids.filter(pid => !redoPids.includes(pid));
@@ -916,9 +970,15 @@ function syncFromText(text) {
   redoPids.forEach(pid => {
     const p = byPid(pid);
     if (!p) return;
-    if (!redoEntry(pid, account)) {
-      redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: '', status: 'pending' });
+    const meta = redoMeta[pid] || { reasons: [], note: '' };
+    const existing = redoEntry(pid, account);
+    if (!existing) {
+      redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: meta.note, status: 'pending', reasons: meta.reasons });
       nRedo++;
+    } else if (existing.status === 'pending') {
+      // 已有待重做：补上这次带来的理由和备注
+      if (meta.reasons.length) existing.reasons = meta.reasons;
+      if (meta.note) existing.note = meta.note;
     }
     // 待重做的 pid 从该账号的派单里移走（回收），等重做完再派回
     ACCOUNTS.forEach(a => {
@@ -945,6 +1005,96 @@ document.getElementById('syncClearBtn').addEventListener('click', () => {
   document.getElementById('syncText').value = '';
 });
 
+/* ================= 自动同步（拉） =================
+   总包定时去各手机的格子里拉最新状态（已做完 + 待重做，含重做理由）。
+   以手机格子为准：该号的已做完 / 待重做按格子里的列表整批对齐；已“重做完成、回池子”的条目不动，
+   除非手机又对同一 pid 点了重做（新版也不行），那就翻回待重做。 */
+function updatePullStatus() {
+  const el = document.getElementById('pullStatus');
+  if (!el) return;
+  const anyBlob = ACCOUNTS.some(a => SYNC_BLOBS[a.id]);
+  if (!anyBlob) { el.textContent = '自动同步还没配好，先用下面的粘贴同步'; return; }
+  if (!lastPullTime) { el.textContent = '正在拉取各手机状态…'; return; }
+  el.textContent = '上次同步 ' + fmtTime(lastPullTime) + (lastPullOk ? ' ✓' : '（失败，稍后自动重试）');
+}
+function applyPhoneState(accountId, data) {
+  if (!data || typeof data !== 'object') return { done: 0, redo: 0 };
+  let nDone = 0, nRedo = 0;
+  // 已做完：以格子为准整批对齐（该号的）
+  const phoneDone = new Set((data.done || []).map(String));
+  Object.keys(doneMap).forEach(pid => {
+    if (doneMap[pid].account === accountId && !phoneDone.has(pid)) delete doneMap[pid];
+  });
+  phoneDone.forEach(pid => {
+    if (!byPid(pid)) return;
+    if (!doneMap[pid]) nDone++;
+    doneMap[pid] = { account: accountId, time: Date.now() };
+  });
+  // 待重做：以格子为准整批对齐（该号的 pending；returned 的不动，除非手机又重做了同一 pid）
+  const phoneRedos = new Map((data.redos || []).map(r => [String(r.pid), r]));
+  redoList = redoList.filter(r => {
+    if (r.account !== accountId || r.status !== 'pending') return true;
+    return phoneRedos.has(String(r.pid));
+  });
+  phoneRedos.forEach((r, pid) => {
+    if (!byPid(pid)) return;
+    const ex = redoEntry(pid, accountId);
+    if (ex) {
+      const wasPending = ex.status === 'pending';
+      ex.status = 'pending';
+      ex.set_no = r.set_no || ex.set_no;
+      ex.title_cn = r.title_cn || ex.title_cn;
+      ex.time = r.time || ex.time;
+      ex.reasons = r.reasons || [];
+      ex.note = r.note || '';
+      delete ex.returnedTime;
+      if (!wasPending) nRedo++;
+    } else {
+      redoList.push({ pid: pid, account: accountId, set_no: r.set_no, title_cn: r.title_cn, time: r.time || Date.now(), note: r.note || '', status: 'pending', reasons: r.reasons || [] });
+      nRedo++;
+    }
+  });
+  // 做完的 pid 从派单里移走；待重做（pending）的 pid 也从派单里移走（等重做完再派回）。
+  // 已回池子的（returned）不动——它可能已经被重新派回原账号了。
+  ACCOUNTS.forEach(a => {
+    assign[String(a.id)] = (assign[String(a.id)] || []).filter(n => {
+      const pp = bySetNo(n);
+      if (!pp) return true;
+      if (doneMap[String(pp.pid)]) return false;
+      const re = redoEntry(String(pp.pid));
+      if (re && re.status === 'pending') return false;
+      return true;
+    });
+  });
+  return { done: nDone, redo: nRedo };
+}
+function pullFromChannel() {
+  const jobs = ACCOUNTS.filter(a => SYNC_BLOBS[a.id]).map(a =>
+    fetch('https://jsonblob.com/api/jsonBlob/' + SYNC_BLOBS[a.id], { headers: { 'Accept': 'application/json' } })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(data => applyPhoneState(a.id, data))
+      .catch(() => null)
+  );
+  if (!jobs.length) { updatePullStatus(); return Promise.resolve(false); }
+  return Promise.all(jobs).then(results => {
+    const ok = results.some(x => x !== null);
+    lastPullTime = Date.now();
+    lastPullOk = ok;
+    if (ok) {
+      saveJSON(LS_DONE, doneMap);
+      saveJSON(LS_REDO, redoList);
+      saveJSON(LS_ASSIGN, assign);
+      afterStateChange();
+      render();
+    }
+    updatePullStatus();
+    return ok;
+  });
+}
+document.getElementById('pullBtn').addEventListener('click', () => {
+  pullFromChannel().then(ok => toast(ok ? '已拉取各手机最新状态' : '拉取失败，请检查网络'));
+});
+
 function fillManualSelects() {
   const sel = document.getElementById('manualPidSel');
   sel.innerHTML = '';
@@ -969,7 +1119,8 @@ document.getElementById('manualRedoBtn').addEventListener('click', () => {
   const p = byPid(pid);
   if (!p) return;
   if (redoEntry(pid, account)) { toast('这条已经在待重做里了'); return; }
-  redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: '手动登记', status: 'pending' });
+  const reasons = parseReasons(document.getElementById('manualReasons').value || '');
+  redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: '手动登记', status: 'pending', reasons: reasons });
   ACCOUNTS.forEach(a => {
     assign[String(a.id)] = (assign[String(a.id)] || []).filter(n => {
       const pp = bySetNo(n);
@@ -1076,6 +1227,9 @@ fetch('products.json')
     PRODUCTS = data;
     fillManualSelects();
     setMode(mode);
+    // 自动同步：打开就拉一次，之后每 30 秒拉一次各手机最新状态
+    pullFromChannel();
+    setInterval(pullFromChannel, 30000);
   })
   .catch(e => {
     document.getElementById('list').innerHTML = '<div class="empty">products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。</div>';

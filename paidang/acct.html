@@ -28,8 +28,12 @@
 
   /* ===== 顶部刷新条：吸顶，永远在最上方，一眼能看到 ===== */
   .refresh-bar { position: sticky; top: 0; z-index: 60; background: #fff; padding: calc(8px + env(safe-area-inset-top)) 10px 8px; border-bottom: 1px solid #e5e5e5; }
-  .refresh-bar button { display: block; width: 100%; height: 50px; border: none; border-radius: 10px; background: #e8590c; color: #fff; font-size: 18px; font-weight: 700; }
-  .refresh-bar button:active { background: #d14d0a; }
+  .refresh-btns { display: flex; gap: 8px; }
+  .refresh-btns button { flex: 1; height: 50px; border-radius: 10px; font-size: 17px; font-weight: 700; }
+  #submitBtn { border: none; background: #e8590c; color: #fff; }
+  #submitBtn:active { background: #d14d0a; }
+  #refreshBtn { border: 1px solid #e8590c; background: #fff; color: #e8590c; }
+  #refreshBtn:active { background: #ffe8cc; }
   .refresh-bar .hint { text-align: center; font-size: 12px; color: #888; margin-top: 5px; }
 
   main { padding: 10px 10px 20px; max-width: 720px; margin: 0 auto; }
@@ -49,6 +53,9 @@
   .grid img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; background: #eee; }
   .grid .tag { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 1px 7px; border-radius: 8px; }
   .cell { position: relative; }
+  .cell .img-redo { position: absolute; right: 6px; bottom: 6px; background: rgba(232,89,12,.92); color: #fff; border: none; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 8px; }
+  .cell .img-redo.flagged { background: #c92a2a; }
+  .cell.flagged img { outline: 2px solid #e8590c; outline-offset: -2px; }
 
   .save-btn { display: block; width: 100%; margin-top: 12px; height: 52px; border: none; border-radius: 10px; background: #e8590c; color: #fff; font-size: 18px; font-weight: 700; }
   .save-btn:disabled { background: #ccc; }
@@ -70,6 +77,20 @@
   .redo-btn.arm { background: #e8590c; color: #fff; }
   .remove-btn { border: 1px solid #ddd; background: #fff; color: #999; }
   .remove-btn.arm { border-color: #e03131; color: #e03131; }
+
+  /* ===== 重做理由选择器（二级选项，可多选） ===== */
+  .redo-panel { margin-top: 10px; border: 1px solid #e8590c; border-radius: 10px; padding: 12px; background: #fff7ed; }
+  .redo-panel .rp-title { font-size: 14px; font-weight: 700; color: #e8590c; margin-bottom: 8px; }
+  .redo-panel .rp-reasons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .redo-panel .rp-reasons label { display: flex; align-items: center; gap: 4px; font-size: 14px; border: 1px solid #ddd; background: #fff; border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+  .redo-panel .rp-reasons label:has(input:checked) { border-color: #e8590c; background: #ffe8cc; font-weight: 700; }
+  .redo-panel .rp-note { width: 100%; margin-top: 8px; height: 38px; border: 1px solid #ddd; border-radius: 7px; padding: 0 10px; font-size: 14px; }
+  .redo-panel .rp-btns { display: flex; gap: 8px; margin-top: 10px; }
+  .redo-panel .rp-btns button { flex: 1; height: 42px; border-radius: 8px; font-size: 15px; font-weight: 700; }
+  .redo-panel .rp-confirm { border: none; background: #e8590c; color: #fff; }
+  .redo-panel .rp-cancel { border: 1px solid #ddd; background: #fff; color: #666; }
+  .redo-reasons { font-size: 13px; color: #e8590c; font-weight: 700; }
+  .sync-line { font-size: 12px; color: #888; text-align: center; margin-top: 6px; }
 
   .empty { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
   .error { background: #fff; border-radius: 12px; padding: 20px 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); text-align: center; color: #c92a2a; font-size: 15px; line-height: 1.8; }
@@ -116,10 +137,14 @@
 </head>
 <body>
 
-<!-- 顶部刷新：做完当前这 10 套就点这里，拉下一组 10 套 -->
+<!-- 顶部：提交信息给总包 / 拉下一组，各一个按钮 -->
 <div class="refresh-bar">
-  <button id="refreshBtn" type="button">🔄 刷新 · 拉下一组（10 套）</button>
-  <div class="hint">做完当前这组 10 套再点刷新，系统按顺序跳过已做完/已重做的，拉接下来没做过的 10 套</div>
+  <div class="refresh-btns">
+    <button id="submitBtn" type="button">📤 提交给总包</button>
+    <button id="refreshBtn" type="button">🔄 拉下一组（10 套）</button>
+  </div>
+  <div class="hint">做完先点“提交给总包”，把已做完和待重做发给总包；要继续做就点“拉下一组”，跳过已做完/已重做的，拿接下来没做过的 10 套</div>
+  <div class="sync-line" id="syncLine"></div>
 </div>
 
 <header>
@@ -215,9 +240,51 @@ const AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).
 /* 本账号的本地状态（只存在这台手机上，别的账号看不到，也不会互相影响） */
 const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: true } —— 按 pid 记，做完永不再推
 const LS_REMOVED = 'paidang_removed_a' + ACCT_ID; // { set_no: true } —— 按套移除，可恢复
-const LS_REDO = 'paidang_redo_a' + ACCT_ID;       // { pid: {time, set_no, title_cn} } —— 按 pid 记，图不行要返工
+const LS_REDO = 'paidang_redo_a' + ACCT_ID;       // { pid: {time, set_no, title_cn, reasons, note} } —— 按 pid 记，整组重做
+const LS_REDO_IMG = 'paidang_redo_img_a' + ACCT_ID; // { pid: {set_no, title_cn, images: {imgNo: {fn, reasons, note, time}}} } —— 单张重做（图N）
 const LS_AUTO_Q = 'paidang_auto_q_a' + ACCT_ID;   // 上次打开的自动队（q 字符串，用来判断链接是不是更新了）
 const LS_AUTO_SEEN = 'paidang_auto_seen_a' + ACCT_ID; // 已被刷新跳过的 set_no（本机已看过的组）
+
+/* 重做理由（二级选项，可多选）：点“重做”时勾选，生图重做按这些理由改。 */
+const REDO_REASONS = [
+  { code: 'look', label: '外观不对' },
+  { code: 'size', label: '尺寸不对' },
+  { code: 'acc', label: '配件不对' },
+  { code: 'clip', label: '穿模' },
+  { code: 'text', label: '文字问题' },
+  { code: 'other', label: '其他' }
+];
+function reasonLabel(code) { const r = REDO_REASONS.find(x => x.code === code); return r ? r.label : code; }
+function reasonsText(codes) { return (codes || []).map(reasonLabel).join('、'); }
+
+/* 自动同步通道：本账号的状态（已做完 + 待重做）推到共享格子，总包定时来拉。
+   SYNC_BLOBS 是 8 个号的格子 ID（jsonblob.com），由总包统一配；为空时不同步，只走手动复制。 */
+const SYNC_BLOBS = { 1: '', 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '' }; // TODO: 填入 8 个 jsonblob ID
+const SYNC_BLOB = SYNC_BLOBS[ACCT_ID] || '';
+const SYNC_URL = SYNC_BLOB ? 'https://jsonblob.com/api/jsonBlob/' + SYNC_BLOB : '';
+let syncStatus = ''; // 上次推送结果：'ok' | 'fail' | ''
+function pushStateToChannel() {
+  if (!SYNC_URL) return Promise.resolve(false);
+  const payload = {
+    account: ACCT_ID,
+    updated: Date.now(),
+    done: Object.keys(doneState),
+    redos: Object.keys(redoState).map(pid => {
+      const info = redoState[pid] || {};
+      return { pid: pid, set_no: info.set_no, title_cn: info.title_cn, time: info.time, reasons: info.reasons || [], note: info.note || '' };
+    }),
+    redos_img: Object.keys(redoImgState).flatMap(pid => {
+      const entry = redoImgState[pid] || {};
+      return Object.keys(entry.images || {}).map(imgNo => {
+        const im = entry.images[imgNo] || {};
+        return { pid: pid, set_no: entry.set_no, title_cn: entry.title_cn, img: parseInt(imgNo, 10), fn: im.fn, reasons: im.reasons || [], note: im.note || '', time: im.time };
+      });
+    })
+  };
+  return fetch(SYNC_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(payload) })
+    .then(r => { syncStatus = r.ok ? 'ok' : 'fail'; return r.ok; })
+    .catch(() => { syncStatus = 'fail'; return false; });
+}
 let autoSeen = new Set();
 let autoQueueProducts = []; // 自动队全部的品（用来算统计和已做完/待重做清单）
 function saveAutoSeen() { saveJSON(LS_AUTO_SEEN, Array.from(autoSeen)); }
@@ -226,6 +293,7 @@ let PRODUCTS = [];
 let doneState = {};
 let removedState = {};
 let redoState = {};
+let redoImgState = {};
 
 function loadJSON(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); }
@@ -237,6 +305,7 @@ function saveJSON(key, obj) {
 doneState = loadJSON(LS_DONE, {});
 removedState = loadJSON(LS_REMOVED, {});
 redoState = loadJSON(LS_REDO, {});
+redoImgState = loadJSON(LS_REDO_IMG, {});
 
 /* 总包重新派单时带的清除重做指令：?cr=pid1,pid2 —— 清掉本机这些 pid 的重做标记，让新版重新出现。
    只清“重做”，不碰“已做完”。 */
@@ -266,6 +335,80 @@ function bySetNo(n) { return PRODUCTS.find(p => p.set_no === n); }
 function isDone(p) { return !!doneState[String(p.pid)]; }
 function isRedo(p) { return !!redoState[String(p.pid)]; }
 function imgURL(p, fn) { return enc(IMG_BASE + p.folder + '/' + fn); }
+function isRedoImg(p, imgNo) {
+  const e = redoImgState[String(p.pid)];
+  return !!(e && e.images && e.images[imgNo]);
+}
+/* 单张重做标记过期清理：那张图的文件名变了（已换成 v2），说明已修好，清掉标记。 */
+function pruneStaleImgRedos() {
+  if (!PRODUCTS.length) return false;
+  let changed = false;
+  Object.keys(redoImgState).forEach(pid => {
+    const e = redoImgState[pid];
+    if (!e || !e.images) return;
+    const p = PRODUCTS.find(x => String(x.pid) === pid);
+    Object.keys(e.images).forEach(imgNo => {
+      const im = e.images[imgNo];
+      const curFn = p ? p.images[parseInt(imgNo, 10) - 1] : null;
+      if (!p || !curFn || curFn !== im.fn) { delete e.images[imgNo]; changed = true; }
+    });
+    if (!Object.keys(e.images).length) { delete redoImgState[pid]; changed = true; }
+  });
+  if (changed) saveJSON(LS_REDO_IMG, redoImgState);
+  return changed;
+}
+/* 单张重做：点某张图上的“重做这张”，勾理由，记到单张重做状态里。 */
+function openImgRedoPicker(p, imgNo, fn, grid) {
+  const card = grid.parentElement;
+  if (card.querySelector('.redo-panel')) return; // 已打开一个理由面板就不再弹
+  const panel = document.createElement('div');
+  panel.className = 'redo-panel';
+  const title = document.createElement('div');
+  title.className = 'rp-title';
+  title.textContent = '图' + imgNo + ' 哪里不行？可以多选，生图按这些理由重做这张';
+  panel.appendChild(title);
+  const box = document.createElement('div');
+  box.className = 'rp-reasons';
+  REDO_REASONS.forEach(r => {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = r.code;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(r.label));
+    box.appendChild(lab);
+  });
+  panel.appendChild(box);
+  const note = document.createElement('input');
+  note.className = 'rp-note';
+  note.type = 'text';
+  note.placeholder = '补充说明（选填，比如：刀头画错了）';
+  panel.appendChild(note);
+  const btns = document.createElement('div');
+  btns.className = 'rp-btns';
+  const okBtn = document.createElement('button');
+  okBtn.className = 'rp-confirm';
+  okBtn.type = 'button';
+  okBtn.textContent = '确认重做这张';
+  okBtn.addEventListener('click', () => {
+    const reasons = Array.from(box.querySelectorAll('input:checked')).map(x => x.value);
+    if (!redoImgState[String(p.pid)]) redoImgState[String(p.pid)] = { set_no: p.set_no, title_cn: p.title_cn, images: {} };
+    redoImgState[String(p.pid)].images[imgNo] = { fn: fn, reasons: reasons, note: note.value.trim(), time: Date.now() };
+    saveJSON(LS_REDO_IMG, redoImgState);
+    pushStateToChannel();
+    render(currentAssigned);
+    toast('图' + imgNo + ' 已标记重做' + (reasons.length ? '（' + reasonsText(reasons) + '）' : '') + '，修好后替换这张');
+  });
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'rp-cancel';
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => { panel.remove(); });
+  btns.appendChild(okBtn);
+  btns.appendChild(cancelBtn);
+  panel.appendChild(btns);
+  grid.insertAdjacentElement('afterend', panel);
+}
 
 function renderStats(assignedList) {
   const assigned = assignedList.length;
@@ -284,6 +427,8 @@ function renderStats(assignedList) {
 }
 
 function render(assignedList) {
+  // 单张重做里已修好的（文件名变了）先清掉标记
+  if (pruneStaleImgRedos()) pushStateToChannel();
   // 统计和已做完/待重做清单按整条队算（自动模式下是整条自动队，不只是当前这组）
   const statsList = AUTO_MODE ? autoQueueProducts : assignedList;
   renderStats(statsList);
@@ -337,16 +482,26 @@ function render(assignedList) {
 
   // 待重做清单（点错了可撤销；复制清单发给总包）
   const redoItems = statsList.filter(p => !isDone(p) && isRedo(p));
+  // 单张待重做：全队里被标记过的图
+  const redoImgItems = [];
+  Object.keys(redoImgState).forEach(pid => {
+    const e = redoImgState[pid];
+    if (!e || !e.images) return;
+    Object.keys(e.images).forEach(imgNo => {
+      redoImgItems.push({ pid: pid, set_no: e.set_no, title_cn: e.title_cn, imgNo: parseInt(imgNo, 10), info: e.images[imgNo] });
+    });
+  });
   const redoBox = document.getElementById('redoListBox');
-  redoBox.hidden = redoItems.length === 0;
-  document.getElementById('redoListSummary').textContent = '待重做（' + redoItems.length + ' 套）· 点开查看';
+  redoBox.hidden = redoItems.length === 0 && redoImgItems.length === 0;
+  document.getElementById('redoListSummary').textContent = '待重做（整组 ' + redoItems.length + ' 套 · 单张 ' + redoImgItems.length + ' 张）· 点开查看';
   const rul = document.getElementById('redoList');
   rul.innerHTML = '';
   redoItems.forEach(p => {
     const info = redoState[String(p.pid)] || {};
     const li = document.createElement('li');
     const span = document.createElement('span');
-    span.textContent = '第' + p.set_no + '套 · ' + p.title_cn + '（pid: ' + p.pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '');
+    const reasonStr = reasonsText(info.reasons);
+    span.textContent = '第' + p.set_no + '套 · 整组重做 · ' + p.title_cn + '（pid: ' + p.pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '') + (reasonStr ? ' · ' + reasonStr : '') + (info.note ? ' · ' + info.note : '');
     const btn = document.createElement('button');
     btn.className = 'restore';
     btn.type = 'button';
@@ -354,8 +509,34 @@ function render(assignedList) {
     btn.addEventListener('click', () => {
       delete redoState[String(p.pid)];
       saveJSON(LS_REDO, redoState);
+      pushStateToChannel();
       render(assignedList);
       toast('已撤销重做，该品回到待发列表');
+    });
+    li.appendChild(span);
+    li.appendChild(btn);
+    rul.appendChild(li);
+  });
+  // 单张待重做（只修这一张，修好后替换）
+  redoImgItems.forEach(it => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    const reasonStr = reasonsText(it.info.reasons);
+    span.textContent = '第' + it.set_no + '套 · 图' + it.imgNo + '重做 · ' + it.title_cn + '（pid: ' + it.pid + '）' + (it.info.time ? ' · ' + fmtTime(it.info.time) : '') + (reasonStr ? ' · ' + reasonStr : '') + (it.info.note ? ' · ' + it.info.note : '');
+    const btn = document.createElement('button');
+    btn.className = 'restore';
+    btn.type = 'button';
+    btn.textContent = '撤销';
+    btn.addEventListener('click', () => {
+      const e = redoImgState[it.pid];
+      if (e && e.images) {
+        delete e.images[it.imgNo];
+        if (!Object.keys(e.images).length) delete redoImgState[it.pid];
+      }
+      saveJSON(LS_REDO_IMG, redoImgState);
+      pushStateToChannel();
+      render(assignedList);
+      toast('已撤销图' + it.imgNo + '的重做标记');
     });
     li.appendChild(span);
     li.appendChild(btn);
@@ -435,6 +616,20 @@ function buildCard(p) {
     tag.textContent = '图' + (i + 1);
     cell.appendChild(img);
     cell.appendChild(tag);
+    // 单张重做：每张图右下角一个小按钮，点开勾理由，只重做这一张
+    const imgNo = i + 1;
+    const rBtn = document.createElement('button');
+    rBtn.className = 'img-redo';
+    rBtn.type = 'button';
+    const flagged = isRedoImg(p, imgNo);
+    rBtn.textContent = flagged ? '待重做' : '重做这张';
+    if (flagged) { rBtn.classList.add('flagged'); cell.classList.add('flagged'); }
+    rBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (flagged) { toast('图' + imgNo + ' 已在待重做里，等修好替换'); return; }
+      openImgRedoPicker(p, imgNo, fn, grid);
+    });
+    cell.appendChild(rBtn);
     grid.appendChild(cell);
   });
   card.appendChild(grid);
@@ -491,6 +686,7 @@ function buildCard(p) {
     clearTimeout(armTimer);
     doneState[String(p.pid)] = true;   // 按 pid 记：这个 pid 永不再推给本账号
     saveJSON(LS_DONE, doneState);
+    pushStateToChannel();
     render(currentAssigned);
     toast('已做完，这个 pid 不会再推给你');
   });
@@ -498,23 +694,55 @@ function buildCard(p) {
   redoBtn.className = 'redo-btn';
   redoBtn.type = 'button';
   redoBtn.textContent = '重做';
-  let armTimerR = null;
   redoBtn.addEventListener('click', () => {
-    if (!redoBtn.classList.contains('arm')) {
-      redoBtn.classList.add('arm');
-      redoBtn.textContent = '确认重做？再点一下';
-      armTimerR = setTimeout(() => {
-        redoBtn.classList.remove('arm');
-        redoBtn.textContent = '重做';
-      }, 3000);
-      return;
-    }
-    clearTimeout(armTimerR);
-    // 按 pid 记进待重做：图不行要返工，从待发列表消失，不再推给本账号（和已做完一样不再出现）
-    redoState[String(p.pid)] = { time: Date.now(), set_no: p.set_no, title_cn: p.title_cn };
-    saveJSON(LS_REDO, redoState);
-    render(currentAssigned);
-    toast('已标记重做，进待重做清单，不会再推给你');
+    if (card.querySelector('.redo-panel')) return; // 已打开就不再弹
+    const panel = document.createElement('div');
+    panel.className = 'redo-panel';
+    const title = document.createElement('div');
+    title.className = 'rp-title';
+    title.textContent = '哪里不行？可以多选，生图按这些理由重做';
+    panel.appendChild(title);
+    const box = document.createElement('div');
+    box.className = 'rp-reasons';
+    REDO_REASONS.forEach(r => {
+      const lab = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = r.code;
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(r.label));
+      box.appendChild(lab);
+    });
+    panel.appendChild(box);
+    const note = document.createElement('input');
+    note.className = 'rp-note';
+    note.type = 'text';
+    note.placeholder = '补充说明（选填，比如：刀头画错了）';
+    panel.appendChild(note);
+    const btns = document.createElement('div');
+    btns.className = 'rp-btns';
+    const okBtn = document.createElement('button');
+    okBtn.className = 'rp-confirm';
+    okBtn.type = 'button';
+    okBtn.textContent = '确认重做';
+    okBtn.addEventListener('click', () => {
+      const reasons = Array.from(box.querySelectorAll('input:checked')).map(x => x.value);
+      // 按 pid 记进待重做：图不行要返工，从待发列表消失，不再推给本账号（和已做完一样不再出现）
+      redoState[String(p.pid)] = { time: Date.now(), set_no: p.set_no, title_cn: p.title_cn, reasons: reasons, note: note.value.trim() };
+      saveJSON(LS_REDO, redoState);
+      pushStateToChannel();
+      render(currentAssigned);
+      toast('已标记重做' + (reasons.length ? '（' + reasonsText(reasons) + '）' : '') + '，不会再推给你');
+    });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'rp-cancel';
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = '取消';
+    cancelBtn.addEventListener('click', () => { panel.remove(); });
+    btns.appendChild(okBtn);
+    btns.appendChild(cancelBtn);
+    panel.appendChild(btns);
+    actions.insertAdjacentElement('afterend', panel);
   });
   const removeBtn = document.createElement('button');
   removeBtn.className = 'remove-btn';
@@ -716,11 +944,24 @@ document.getElementById('restoreRemovedBtn').addEventListener('click', () => {
 /* 复制待重做清单：发给总包登记。格式里带账号、pid、套号、时间，总包粘贴到 master.html 解析即可。 */
 function copyRedoList(btn) {
   const items = (AUTO_MODE ? autoQueueProducts : currentAssigned).filter(p => !isDone(p) && isRedo(p));
-  if (!items.length) { toast('没有待重做的品'); return; }
-  const lines = [ACCT_NAME + ' 待重做（' + items.length + '）：'];
+  const imgItems = [];
+  Object.keys(redoImgState).forEach(pid => {
+    const e = redoImgState[pid];
+    if (!e || !e.images) return;
+    Object.keys(e.images).forEach(imgNo => {
+      imgItems.push({ pid: pid, set_no: e.set_no, title_cn: e.title_cn, imgNo: parseInt(imgNo, 10), info: e.images[imgNo] });
+    });
+  });
+  if (!items.length && !imgItems.length) { toast('没有待重做的品'); return; }
+  const lines = [ACCT_NAME + ' 待重做（整组 ' + items.length + ' · 单张 ' + imgItems.length + '）：'];
   items.forEach((p, i) => {
     const info = redoState[String(p.pid)] || {};
-    lines.push((i + 1) + '. 第' + p.set_no + '套 ' + p.title_cn + ' pid ' + p.pid + (info.time ? '（' + fmtTime(info.time) + '）' : ''));
+    const reasonStr = reasonsText(info.reasons);
+    lines.push((i + 1) + '. 第' + p.set_no + '套 整组重做 ' + p.title_cn + ' pid ' + p.pid + (info.time ? '（' + fmtTime(info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
+  });
+  imgItems.forEach((it, i) => {
+    const reasonStr = reasonsText(it.info.reasons);
+    lines.push((items.length + i + 1) + '. 第' + it.set_no + '套 图' + it.imgNo + '重做 ' + it.title_cn + ' pid ' + it.pid + (it.info.time ? '（' + fmtTime(it.info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (it.info.note ? ' 备注：' + it.info.note : ''));
   });
   copyText(lines.join('\n'), btn, '已复制，去发给总包');
 }
@@ -746,6 +987,8 @@ function copyText(text, btn, okLabel) {
    拉到的新组会写进链接（replaceState），刷新页面也不丢。 */
 function refreshBatch() {
   if (!PRODUCTS.length) { toast('产品库还没加载好，稍等一下再点'); return; }
+  // 拉下一组的同时，把本机当前状态（已做完 + 待重做）推给总包
+  pushStateToChannel().then(updateSyncLine);
   if (AUTO_MODE) {
     // 自动模式：直接从队里拿接下来 10 个未消费的套，不用总包再发链接
     const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
@@ -791,12 +1034,35 @@ function refreshBatch() {
 }
 document.getElementById('refreshBtn').addEventListener('click', refreshBatch);
 
+/* 提交给总包：把本机已做完 + 待重做推到共享通道，总包刷新就能看到。 */
+function updateSyncLine() {
+  const el = document.getElementById('syncLine');
+  if (!el) return;
+  if (!SYNC_URL) { el.textContent = '自动同步还没配好，先用下面的“复制本机状态”发给总包'; return; }
+  if (syncStatus === 'ok') el.textContent = '上次提交成功 ' + fmtTime(Date.now());
+  else if (syncStatus === 'fail') el.textContent = '上次提交失败，请检查网络或用“复制本机状态”发给总包';
+  else el.textContent = '';
+}
+document.getElementById('submitBtn').addEventListener('click', function () {
+  if (!SYNC_URL) { toast('自动同步还没配好，请用下面的“复制本机状态”发给总包'); return; }
+  const btn = this;
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  pushStateToChannel().then(ok => {
+    btn.disabled = false;
+    btn.textContent = '📤 提交给总包';
+    updateSyncLine();
+    toast(ok ? '已提交给总包，总包刷新就能看到' : '提交失败，请检查网络或用“复制本机状态”发给总包');
+  });
+});
+
 /* 复制本机状态：把本账号全部已做完和待重做的 pid 复制成文字，发给总包粘贴同步。
    格式与 master.html 的解析器对应：第一行“账号N 状态同步”，随后“已做完”段和“待重做”段，各带 pid。 */
 function copyStatus(btn) {
   const donePids = Object.keys(doneState);
   const redoPids = Object.keys(redoState);
-  if (!donePids.length && !redoPids.length) { toast('本机还没有已做完或待重做的品'); return; }
+  const redoImgPids = Object.keys(redoImgState);
+  if (!donePids.length && !redoPids.length && !redoImgPids.length) { toast('本机还没有已做完或待重做的品'); return; }
   const lines = [ACCT_NAME + ' 状态同步'];
   lines.push('已做完（' + donePids.length + '）：');
   donePids.forEach(pid => {
@@ -807,7 +1073,18 @@ function copyStatus(btn) {
   redoPids.forEach(pid => {
     const info = redoState[pid] || {};
     const p = PRODUCTS.find(x => String(x.pid) === pid);
-    lines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : '') + (info.time ? ' ' + fmtTime(info.time) : ''));
+    const reasonStr = reasonsText(info.reasons);
+    lines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : '') + (info.time ? ' ' + fmtTime(info.time) : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
+  });
+  lines.push('单张重做（' + redoImgPids.length + ' 个品）：');
+  redoImgPids.forEach(pid => {
+    const e = redoImgState[pid] || {};
+    const p = PRODUCTS.find(x => String(x.pid) === pid);
+    Object.keys(e.images || {}).forEach(imgNo => {
+      const im = e.images[imgNo] || {};
+      const reasonStr = reasonsText(im.reasons);
+      lines.push('- pid ' + pid + ' 图' + imgNo + '重做' + (p ? '（第' + p.set_no + '套）' : '') + (im.time ? ' ' + fmtTime(im.time) : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (im.note ? ' 备注：' + im.note : ''));
+    });
   });
   copyText(lines.join('\n'), btn, '已复制，去发给总包');
 }
@@ -886,7 +1163,7 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         }
         if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
         const hint = document.querySelector('.refresh-bar .hint');
-        if (hint) hint.textContent = '自动派单：做完这组点刷新，直接拿下一组，不用等总包发链接';
+        if (hint) hint.textContent = '自动派单：做完先点“提交给总包”，再点“拉下一组”拿下一组，不用等总包发链接';
         render(currentAssigned);
       } else {
         currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
@@ -899,6 +1176,8 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
         render(currentAssigned);
       }
+      // 打开页面就把本机已有的已做完/待重做推给总包（补推之前攒下的状态）
+      pushStateToChannel().then(updateSyncLine);
     })
     .catch(e => {
       showError('products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。');
