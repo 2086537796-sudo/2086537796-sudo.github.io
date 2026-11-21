@@ -200,10 +200,19 @@ const BATCH = 10;               // 每组拉 10 个
    没有 x 参数的旧链接也能打开，刷新时只按本机已做完/已重做过滤。 */
 const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0));
 
+/* 自动派单：acct.html?a=N&auto=1&q=set_no列表（整条队）。手机点刷新自助拿下一组，不用总包再发链接。 */
+const AUTO_MODE = params.get('auto') === '1';
+const AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
+
 /* 本账号的本地状态（只存在这台手机上，别的账号看不到，也不会互相影响） */
 const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: true } —— 按 pid 记，做完永不再推
 const LS_REMOVED = 'paidang_removed_a' + ACCT_ID; // { set_no: true } —— 按套移除，可恢复
 const LS_REDO = 'paidang_redo_a' + ACCT_ID;       // { pid: {time, set_no, title_cn} } —— 按 pid 记，图不行要返工
+const LS_AUTO_Q = 'paidang_auto_q_a' + ACCT_ID;   // 上次打开的自动队（q 字符串，用来判断链接是不是更新了）
+const LS_AUTO_SEEN = 'paidang_auto_seen_a' + ACCT_ID; // 已被刷新跳过的 set_no（本机已看过的组）
+let autoSeen = new Set();
+let autoQueueProducts = []; // 自动队全部的品（用来算统计和已做完/待重做清单）
+function saveAutoSeen() { saveJSON(LS_AUTO_SEEN, Array.from(autoSeen)); }
 
 let PRODUCTS = [];
 let doneState = {};
@@ -267,7 +276,9 @@ function renderStats(assignedList) {
 }
 
 function render(assignedList) {
-  renderStats(assignedList);
+  // 统计和已做完/待重做清单按整条队算（自动模式下是整条自动队，不只是当前这组）
+  const statsList = AUTO_MODE ? autoQueueProducts : assignedList;
+  renderStats(statsList);
   const listEl = document.getElementById('list');
   const emptyEl = document.getElementById('empty');
   listEl.innerHTML = '';
@@ -285,10 +296,13 @@ function render(assignedList) {
     shown++;
     listEl.appendChild(buildCard(p));
   });
+  if (shown === 0 && AUTO_MODE) {
+    emptyEl.textContent = '这条队的货发完了，找总包要新链接 🔄';
+  }
   emptyEl.hidden = shown !== 0;
 
   // 已做完清单（可查看，点错了可恢复）
-  const doneItems = assignedList.filter(isDone);
+  const doneItems = statsList.filter(isDone);
   const doneBox = document.getElementById('doneListBox');
   doneBox.hidden = doneItems.length === 0;
   document.getElementById('doneListSummary').textContent = '已做完（' + doneItems.length + ' 套）· 点开查看（点错了可恢复）';
@@ -314,7 +328,7 @@ function render(assignedList) {
   });
 
   // 待重做清单（点错了可撤销；复制清单发给总包）
-  const redoItems = assignedList.filter(p => !isDone(p) && isRedo(p));
+  const redoItems = statsList.filter(p => !isDone(p) && isRedo(p));
   const redoBox = document.getElementById('redoListBox');
   redoBox.hidden = redoItems.length === 0;
   document.getElementById('redoListSummary').textContent = '待重做（' + redoItems.length + ' 套）· 点开查看';
@@ -659,7 +673,7 @@ document.getElementById('restoreRemovedBtn').addEventListener('click', () => {
 
 /* 复制待重做清单：发给总包登记。格式里带账号、pid、套号、时间，总包粘贴到 master.html 解析即可。 */
 function copyRedoList(btn) {
-  const items = currentAssigned.filter(p => !isDone(p) && isRedo(p));
+  const items = (AUTO_MODE ? autoQueueProducts : currentAssigned).filter(p => !isDone(p) && isRedo(p));
   if (!items.length) { toast('没有待重做的品'); return; }
   const lines = [ACCT_NAME + ' 待重做（' + items.length + '）：'];
   items.forEach((p, i) => {
@@ -690,6 +704,25 @@ function copyText(text, btn, okLabel) {
    拉到的新组会写进链接（replaceState），刷新页面也不丢。 */
 function refreshBatch() {
   if (!PRODUCTS.length) { toast('产品库还没加载好，稍等一下再点'); return; }
+  if (AUTO_MODE) {
+    // 自动模式：直接从队里拿接下来 10 个未消费的套，不用总包再发链接
+    const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
+    if (unfinished > 0) {
+      if (!confirm('这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会被跳过（之后找总包要新链接可以重新拿到）。')) return;
+    }
+    currentAssigned.forEach(p => autoSeen.add(p.set_no));
+    saveAutoSeen();
+    currentAssigned = computeAutoBatch();
+    if (!currentAssigned.length) {
+      render(currentAssigned);
+      toast('这条队的货发完了，找总包要新链接');
+      return;
+    }
+    render(currentAssigned);
+    window.scrollTo(0, 0);
+    toast('已拉到下一组：' + currentAssigned.length + ' 套');
+    return;
+  }
   const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
   if (unfinished > 0) {
     if (!confirm('这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会回到总包的待派送池子，之后再派。')) return;
@@ -742,7 +775,7 @@ document.getElementById('copyStatusBtn').addEventListener('click', function () {
 
 /* ================= 启动 ================= */
 let currentAssigned = [];
-document.getElementById('acctTitle').textContent = ACCT_NAME + ' · 子工作台';
+document.getElementById('acctTitle').textContent = ACCT_NAME + ' · 子工作台' + (AUTO_MODE ? '（自动派单）' : '');
 
 function showError(msg) {
   const box = document.getElementById('errorBox');
@@ -752,23 +785,78 @@ function showError(msg) {
   document.getElementById('empty').hidden = true;
 }
 
-if (!ACCT_ID || !ASSIGNED_SETS.length) {
-  showError('这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
+/* 自动队当前这组：队里前 10 个未消费的套（没做完、没重做、没移除、没被刷新跳过） */
+function computeAutoBatch() {
+  const batch = [];
+  for (const n of AUTO_QUEUE) {
+    if (batch.length >= BATCH) break;
+    const p = bySetNo(n);
+    if (!p) continue;
+    if (isDone(p) || isRedo(p) || removedState[p.set_no]) continue;
+    if (autoSeen.has(p.set_no)) continue;
+    batch.push(p);
+  }
+  return batch;
+}
+function setupAutoQueue() {
+  // 链接换了（q 变了）：用新队，并清空“已跳过”记录（从队首未消费的重新开始；已做完/待重做按 pid 记，不会丢）
+  let storedQ = '';
+  try { storedQ = localStorage.getItem(LS_AUTO_Q) || ''; } catch (e) {}
+  const curQ = AUTO_QUEUE.join(',');
+  if (storedQ !== curQ) {
+    try { localStorage.setItem(LS_AUTO_Q, curQ); } catch (e) {}
+    autoSeen = new Set();
+    saveAutoSeen();
+  } else {
+    autoSeen = new Set(loadJSON(LS_AUTO_SEEN, []));
+  }
+  // 重做回流（cr 清掉重做标记的 pid）：把这些套从“已跳过”里放出来，让新版能重新出现
+  if (CLEAR_REDO.length) {
+    let changed = false;
+    CLEAR_REDO.forEach(pid => {
+      PRODUCTS.filter(p => String(p.pid) === pid).forEach(p => {
+        if (autoSeen.has(p.set_no)) { autoSeen.delete(p.set_no); changed = true; }
+      });
+    });
+    if (changed) saveAutoSeen();
+  }
+  autoQueueProducts = AUTO_QUEUE.map(bySetNo).filter(Boolean);
+  currentAssigned = computeAutoBatch();
+}
+
+if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUEUE.length)) {
+  showError(AUTO_MODE
+    ? '这个自动链接里没有排队信息（缺账号或队）。请找总包重新发一条自动链接给你。'
+    : '这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
   renderStats([]);
 } else {
   fetch('products.json')
     .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
     .then(data => {
       PRODUCTS = data;
-      currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
-      const missing = ASSIGNED_SETS.length - currentAssigned.length;
-      if (!currentAssigned.length) {
-        showError('链接里的品在产品库里找不到了（可能已被下架）。请找总包重新派单。');
-        renderStats([]);
-        return;
+      if (AUTO_MODE) {
+        setupAutoQueue();
+        const missing = AUTO_QUEUE.length - autoQueueProducts.length;
+        if (!autoQueueProducts.length) {
+          showError('自动队里的品在产品库里找不到了（可能已被下架）。请找总包重新派单。');
+          renderStats([]);
+          return;
+        }
+        if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
+        const hint = document.querySelector('.refresh-bar .hint');
+        if (hint) hint.textContent = '自动派单：做完这组点刷新，直接拿下一组，不用等总包发链接';
+        render(currentAssigned);
+      } else {
+        currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
+        const missing = ASSIGNED_SETS.length - currentAssigned.length;
+        if (!currentAssigned.length) {
+          showError('链接里的品在产品库里找不到了（可能已被下架）。请找总包重新派单。');
+          renderStats([]);
+          return;
+        }
+        if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
+        render(currentAssigned);
       }
-      if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
-      render(currentAssigned);
     })
     .catch(e => {
       showError('products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。');

@@ -101,6 +101,19 @@
 
   .empty { text-align: center; color: #999; padding: 40px 0; font-size: 14px; }
   footer { padding: 14px 16px 30px; font-size: 12px; color: #999; text-align: center; line-height: 1.8; }
+  /* 派单模式切换 */
+  .mode-switch { display: flex; gap: 8px; align-items: center; background: #fff; border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); flex-wrap: wrap; }
+  .mode-switch .mode-label { font-size: 15px; font-weight: 700; }
+  .mode-switch button { height: 38px; padding: 0 16px; border-radius: 8px; font-size: 14px; border: 1px solid #ddd; background: #fff; color: #333; }
+  .mode-switch button.on { background: #e8590c; color: #fff; border-color: #e8590c; font-weight: 700; }
+  .mode-switch .mode-note { font-size: 12px; color: #888; }
+  .auto-acct { border: 1px solid #e8e8e8; border-radius: 10px; padding: 10px; margin-top: 8px; }
+  .auto-acct .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .auto-acct .name { font-size: 15px; font-weight: 700; }
+  .auto-acct .nums { font-size: 13px; color: #555; }
+  .auto-acct .nums b { color: #e8590c; }
+  .auto-acct .nums b.green { color: #2f9e44; }
+  body.auto-mode .manual-only { display: none !important; }
   .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: rgba(0,0,0,.85); color: #fff; font-size: 14px; padding: 10px 16px; border-radius: 20px; z-index: 300; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
   .toast[hidden] { display: none; }
 </style>
@@ -113,9 +126,17 @@
 </header>
 
 <main>
+  <!-- 派单模式切换 -->
+  <div class="mode-switch" id="modeSwitch">
+    <span class="mode-label">派单模式：</span>
+    <button id="modeAutoBtn" type="button">自动派单</button>
+    <button id="modeManualBtn" type="button">人工派单</button>
+    <span class="mode-note" id="modeNote"></span>
+  </div>
+
   <!-- 数据统计 -->
   <section>
-    <h2>数据统计</h2>
+    <h2>数据统计 <span id="modeStat"></span></h2>
     <div class="stat-row">
       <div class="stat-box"><div class="num" id="stTotal">0</div><div class="lbl">产品总数（套）</div></div>
       <div class="stat-box"><div class="num green" id="stPool">0</div><div class="lbl">待派送池子</div></div>
@@ -125,6 +146,16 @@
     </div>
     <div id="acctStats"></div>
     <div class="hint">口径：待派送 = 还没派给任何账号的 pid；已派送/进行中 = 已派给某账号、该账号还没做完的 pid；已做完 = 手机上点了已做完并同步回来的 pid；待重做 = 手机上点了重做、等重做的 pid。手机的已做完/重做要先同步回来（见下方），总包这里才能看到。</div>
+  </section>
+
+  <!-- 自动派单 -->
+  <section id="autoSection" hidden>
+    <h2>自动派单 <span>（系统自动排队，手机点刷新自助拿下一组）</span></h2>
+    <div id="autoAccts"></div>
+    <div class="sync-row">
+      <button id="genAutoBtn" type="button">生成 / 更新全部自动链接</button>
+    </div>
+    <div class="hint">排队规则：先排该号的重做回流，再按 set_no 从大到小（最新在前），每 10 个一组轮流分给各号；已做完、待重做、别的号手里的 pid 都会跳过，一个 pid 同一时间只在一号手里。新增的套只往队尾追加，重做回流插到该号未做部分的队首。链接更新后重新发给手机，手机打开新链接继续做（已做完不会丢）。</div>
   </section>
 
   <!-- 待重做 -->
@@ -168,12 +199,12 @@
   <div class="tools">
     <input id="search" type="search" placeholder="搜 pid 或品名…" autocomplete="off">
     <button id="onlyPoolBtn" type="button">● 只看待派送</button>
-    <button id="selAllBtn" type="button">全选待派送</button>
-    <button id="selNoneBtn" type="button">全不选</button>
+    <button id="selAllBtn" class="manual-only" type="button">全选待派送</button>
+    <button id="selNoneBtn" class="manual-only" type="button">全不选</button>
   </div>
 
-  <button id="genBtn" class="gen-btn" type="button">生成派单链接</button>
-  <div class="gen-note">每组 10 个：一个账号一次最多派 10 套。生成后每个账号会得到一条专属链接，复制后发给对应手机。</div>
+  <button id="genBtn" class="gen-btn manual-only" type="button">生成派单链接</button>
+  <div class="gen-note manual-only">每组 10 个：一个账号一次最多派 10 套。生成后每个账号会得到一条专属链接，复制后发给对应手机。</div>
 
   <div id="list"></div>
   <div id="empty" class="empty" hidden>没有符合条件的品</div>
@@ -183,7 +214,9 @@
   防重复规则：一个 pid 同一时间只派给一个账号。已派给某账号、已被任何账号做完、正在待重做的 pid，<br>
   都不会再派给别的账号；重做完成的新版只派回当初点重做的那个账号。<br>
   改派 / 撤回：取消勾选后重新点「生成派单链接」，把新链接发给手机即可（旧链接作废）。<br>
-  每组 10 个：一个账号一次最多拿 10 套，做完 10 套后手机点顶部「刷新」拉下一组。
+  每组 10 个：一个账号一次最多拿 10 套，做完 10 套后手机点顶部「刷新」拉下一组。<br>
+  自动派单：总包在「自动派单」区生成自动链接发给手机，手机点顶部「刷新」自助拿下一组；<br>
+  新品进池或重做完成时，总包点「生成 / 更新全部自动链接」，把新链接发给手机即可。
 </footer>
 
 <div id="toast" class="toast" hidden></div>
@@ -200,6 +233,11 @@ const LS_ASSIGN = 'paidang_assign'; // { "1": [set_no...], "2": [...] } —— �
 const LS_DONE = 'paidang_done';     // { pid: {account, time} } —— 已同步回来的已做完
 const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, note, status} ] status: pending | returned
 const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pid], clearedRedo:[pid]} ]
+const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
+function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
+let mode = 'manual';
+let autoQueues = {};   // { "1": [set_no...], "2": [...] } —— 自动派单的队（内存缓存，与 localStorage 同步）
+let autoLinks = {};    // { "1": url, "2": url } —— 生成好的自动链接
 
 let PRODUCTS = [];
 let assign = {};
@@ -222,6 +260,9 @@ doneMap = loadJSON(LS_DONE, {});
 redoList = loadJSON(LS_REDO, []);
 log = loadJSON(LS_LOG, []);
 ACCOUNTS.forEach(a => { if (!Array.isArray(assign[String(a.id)])) assign[String(a.id)] = []; });
+try { mode = localStorage.getItem(LS_MODE) || 'manual'; } catch (e) { mode = 'manual'; }
+if (mode !== 'auto' && mode !== 'manual') mode = 'manual';
+ACCOUNTS.forEach(a => { autoQueues[String(a.id)] = loadJSON(autoQKey(a.id), []); });
 
 let toastTimer = null;
 function toast(msg) {
@@ -264,6 +305,11 @@ function pidState(pid) {
     if (arr.some(n => { const p = bySetNo(n); return p && String(p.pid) === pid; })) {
       return { state: 'assigned', account: a.id };
     }
+    // 自动队的队也算“已派”：同一 pid 不能再派给别的号（跨模式也防重复）
+    const q = autoQueues[String(a.id)] || [];
+    if (q.some(n => { const p = bySetNo(n); return p && String(p.pid) === pid; })) {
+      return { state: 'assigned', account: a.id };
+    }
   }
   return { state: 'pool', account: null };
 }
@@ -282,6 +328,203 @@ function canDispatch(p, accountId) {
 }
 function accountTotal(accountId) {
   return (assign[String(accountId)] || []).length;
+}
+
+/* ================= 自动派单 =================
+   队 = 每号一条 set_no 列表，存在 localStorage（paidang_auto_q_a<N>）。
+   增量更新：新套只往队尾追加，绝不往中间插；重做回流插到该号“未消费部分”最前面。
+   队里只留未消费的套（已做完 / 待重做 / 被人工占用的会被清理掉），所以队首就是未消费部分的队首。 */
+function loadAutoQueues() {
+  const map = {};
+  ACCOUNTS.forEach(a => { map[String(a.id)] = loadJSON(autoQKey(a.id), []); });
+  return map;
+}
+function saveAutoQueues(map) {
+  ACCOUNTS.forEach(a => {
+    const arr = Array.isArray(map[String(a.id)]) ? map[String(a.id)] : [];
+    autoQueues[String(a.id)] = arr;
+    saveJSON(autoQKey(a.id), arr);
+  });
+}
+function manualAssignedPids() {
+  const s = new Set();
+  ACCOUNTS.forEach(a => {
+    (assign[String(a.id)] || []).forEach(n => {
+      const p = bySetNo(n);
+      if (p) s.add(String(p.pid));
+    });
+  });
+  return s;
+}
+function computeAutoQueues() {
+  const queues = loadAutoQueues();
+  const done = new Set(Object.keys(doneMap));
+  const pendRedo = new Set(redoList.filter(r => r.status === 'pending').map(r => String(r.pid)));
+  const manualPids = manualAssignedPids();
+  // 1. 清理各队：去掉 pid 已做完 / 待重做 / 被人工派单占用的套；去掉不在产品库里的套
+  ACCOUNTS.forEach(a => {
+    queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
+      const p = bySetNo(n);
+      if (!p) return false;
+      const pid = String(p.pid);
+      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
+      return true;
+    });
+  });
+  // 2. 重做回流：该号 returned 的套移到队首（队里只剩未消费的套，队首就是未消费部分的队首）
+  ACCOUNTS.forEach(a => {
+    const q = queues[String(a.id)];
+    const retSets = redoList
+      .filter(r => r.status === 'returned' && r.account === a.id)
+      .map(r => r.set_no)
+      .filter(n => bySetNo(n));
+    if (!retSets.length) return;
+    const rest = q.filter(n => !retSets.includes(n));
+    const restPids = new Set(rest.map(n => { const p = bySetNo(n); return p ? String(p.pid) : ''; }));
+    const toInsert = retSets.filter(n => {
+      const p = bySetNo(n);
+      if (!p) return false;
+      const pid = String(p.pid);
+      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
+      if (restPids.has(pid)) return false; // 同 pid 的另一套已在队里，不重复占位
+      // 别的号队里已有这个 pid（另一套），不能插
+      for (const o of ACCOUNTS) {
+        if (o.id === a.id) continue;
+        if ((queues[String(o.id)] || []).some(m => { const pp = bySetNo(m); return pp && String(pp.pid) === pid; })) return false;
+      }
+      return true;
+    });
+    queues[String(a.id)] = toInsert.concat(rest);
+  });
+  // 3. 新套增量追加：符合条件的套按 set_no 从大到小，每 10 个一组轮流分给各号，队尾追加
+  const takenPids = new Set();
+  ACCOUNTS.forEach(a => {
+    (queues[String(a.id)] || []).forEach(n => {
+      const p = bySetNo(n);
+      if (p) takenPids.add(String(p.pid));
+    });
+  });
+  const candidates = PRODUCTS
+    .filter(p => {
+      const pid = String(p.pid);
+      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid) || takenPids.has(pid)) return false;
+      return true;
+    })
+    .sort((x, y) => y.set_no - x.set_no);
+  let ai = 0, filled = 0;
+  candidates.forEach(p => {
+    if (takenPids.has(String(p.pid))) return;
+    const acct = ACCOUNTS[ai % ACCOUNTS.length];
+    queues[String(acct.id)].push(p.set_no);
+    takenPids.add(String(p.pid));
+    filled++;
+    if (filled >= BATCH) { filled = 0; ai++; }
+  });
+  saveAutoQueues(queues);
+  return queues;
+}
+/* 自动链接：acct.html?a=N&auto=1&q=<整条队的 set_no>，重做回流的 pid 带 cr= 清手机上的重做标记 */
+function buildAutoLink(accountId) {
+  const q = (autoQueues[String(accountId)] || []).slice();
+  if (!q.length) return '';
+  const cr = [];
+  q.forEach(n => {
+    const p = bySetNo(n);
+    if (!p) return;
+    const r = redoEntry(p.pid, accountId);
+    if (r && r.status === 'returned') cr.push(String(p.pid));
+  });
+  let base = location.pathname.replace(/(master|index)\.html$/, 'acct.html');
+  if (!base.endsWith('acct.html')) base = base.replace(/\/?$/, '/') + 'acct.html';
+  let url = location.origin + base + '?a=' + accountId + '&auto=1&q=' + q.join(',');
+  if (cr.length) url += '&cr=' + cr.join(',');
+  return url;
+}
+function refreshAutoLinks() {
+  autoLinks = {};
+  ACCOUNTS.forEach(a => { autoLinks[String(a.id)] = buildAutoLink(a.id); });
+}
+function autoQueueStats(accountId) {
+  const q = autoQueues[String(accountId)] || [];
+  const doneCount = q.filter(n => {
+    const p = bySetNo(n);
+    return p && doneMap[String(p.pid)] && doneMap[String(p.pid)].account === accountId;
+  }).length;
+  const redoCount = q.filter(n => {
+    const p = bySetNo(n);
+    return p && redoEntry(p.pid, accountId);
+  }).length;
+  return { total: q.length, done: doneCount, redo: redoCount, remain: q.length - doneCount - redoCount };
+}
+function renderAuto() {
+  const sec = document.getElementById('autoSection');
+  if (!sec) return;
+  sec.hidden = mode !== 'auto';
+  if (mode !== 'auto') return;
+  refreshAutoLinks();
+  const wrap = document.getElementById('autoAccts');
+  wrap.innerHTML = '';
+  ACCOUNTS.forEach(a => {
+    const st = autoQueueStats(a.id);
+    const box = document.createElement('div');
+    box.className = 'auto-acct';
+    const top = document.createElement('div');
+    top.className = 'top';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = a.name + ' · 自动队';
+    const nums = document.createElement('span');
+    nums.className = 'nums';
+    nums.innerHTML = '队长 <b>' + st.total + '</b> 套 · 已做完 <b class="green">' + st.done + '</b> · 待重做 <b>' + st.redo + '</b> · 还剩 <b>' + st.remain + '</b>';
+    top.appendChild(name); top.appendChild(nums);
+    box.appendChild(top);
+    const link = autoLinks[String(a.id)] || '';
+    const linkRow = document.createElement('div');
+    linkRow.className = 'linkrow';
+    const input = document.createElement('input');
+    input.readOnly = true;
+    input.value = link || '';
+    input.placeholder = link ? '' : '队是空的：先点下方「生成 / 更新全部自动链接」';
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'mini-btn';
+    copyBtn.type = 'button';
+    copyBtn.textContent = '复制自动链接';
+    copyBtn.disabled = !link;
+    copyBtn.addEventListener('click', () => copyText(link, copyBtn));
+    linkRow.appendChild(input);
+    linkRow.appendChild(copyBtn);
+    box.appendChild(linkRow);
+    const updBtn = document.createElement('button');
+    updBtn.className = 'mini-btn';
+    updBtn.type = 'button';
+    updBtn.style.marginTop = '8px';
+    updBtn.textContent = '更新这条队并刷新链接';
+    updBtn.addEventListener('click', () => {
+      computeAutoQueues();
+      render();
+      toast('已更新' + a.name + '的自动队，链接已刷新，重新发给手机');
+    });
+    box.appendChild(updBtn);
+    wrap.appendChild(box);
+  });
+}
+function setMode(m) {
+  if (m !== 'auto' && m !== 'manual') m = 'manual';
+  mode = m;
+  try { localStorage.setItem(LS_MODE, mode); } catch (e) {}
+  document.body.classList.toggle('auto-mode', mode === 'auto');
+  const ab = document.getElementById('modeAutoBtn');
+  const mb = document.getElementById('modeManualBtn');
+  if (ab) ab.classList.toggle('on', mode === 'auto');
+  if (mb) mb.classList.toggle('on', mode === 'manual');
+  const note = document.getElementById('modeNote');
+  if (note) note.textContent = mode === 'auto' ? '自动：系统排队，手机刷新自助拿下一组' : '人工：你手动勾选派单';
+  if (mode === 'auto') computeAutoQueues();
+  render();
+}
+/* 状态变了（同步 / 重做登记 / 重做完成）之后，自动模式下刷新自动队 */
+function afterStateChange() {
+  if (mode === 'auto') computeAutoQueues();
 }
 
 function copyText(text, btn, okLabel) {
@@ -335,6 +578,8 @@ function buildLink(accountId) {
 }
 
 function renderStats() {
+  const modeStat = document.getElementById('modeStat');
+  if (modeStat) modeStat.textContent = '· 当前：' + (mode === 'auto' ? '自动派单' : '人工派单');
   const total = PRODUCTS.length;
   const pids = [...new Set(PRODUCTS.map(p => String(p.pid)))];
   let pool = 0, dispatched = 0, done = 0, redo = 0;
@@ -376,6 +621,15 @@ function renderStats() {
     barI.style.width = pct + '%';
     bar.appendChild(barI);
     box.appendChild(bar);
+    if (mode === 'auto') {
+      // 自动模式：统计区只显示自动队情况，链接在下方的「自动派单」区复制
+      const aq = autoQueueStats(a.id);
+      const autoLine = document.createElement('div');
+      autoLine.className = 'nums';
+      autoLine.style.marginTop = '6px';
+      autoLine.innerHTML = '自动队：共 <b>' + aq.total + '</b> 套 · 已做完 <b class="done">' + aq.done + '</b> · 还剩 <b>' + aq.remain + '</b>';
+      box.appendChild(autoLine);
+    } else {
     const link = genLinks[String(a.id)] || '';
     const linkRow = document.createElement('div');
     linkRow.className = 'linkrow';
@@ -392,6 +646,7 @@ function renderStats() {
     linkRow.appendChild(input);
     linkRow.appendChild(copyBtn);
     box.appendChild(linkRow);
+    }
     wrap.appendChild(box);
   });
 }
@@ -423,6 +678,7 @@ function renderRedo() {
         r.status = 'returned';
         r.returnedTime = Date.now();
         saveJSON(LS_REDO, redoList);
+        afterStateChange();
         render();
         toast('已放回待派送池子，优先派回' + acctName(r.account));
       });
@@ -513,6 +769,13 @@ function renderList() {
     meta.textContent = 'pid: ' + p.pid + ' ｜ ' + p.style + ' ｜ ' + p.images.length + ' 张图';
     info.appendChild(title);
     info.appendChild(meta);
+    if (mode === 'auto') {
+      const autoHint = document.createElement('div');
+      autoHint.className = 'meta';
+      autoHint.style.color = '#e8590c';
+      autoHint.textContent = '自动模式：由系统排队派单，不用手动勾选';
+      info.appendChild(autoHint);
+    } else {
     const checks = document.createElement('div');
     checks.className = 'checks';
     ACCOUNTS.forEach(a => {
@@ -561,6 +824,7 @@ function renderList() {
       checks.appendChild(label);
     });
     info.appendChild(checks);
+    }
     row.appendChild(info);
     listEl.appendChild(row);
   });
@@ -572,6 +836,7 @@ function render() {
   renderRedo();
   renderLog();
   renderList();
+  renderAuto();
 }
 
 /* 同步手机状态：粘贴手机上“复制本机状态”的文字，解析已做完和待重做的 pid，登记到总包。
@@ -638,6 +903,7 @@ function syncFromText(text) {
   saveJSON(LS_DONE, doneMap);
   saveJSON(LS_REDO, redoList);
   saveJSON(LS_ASSIGN, assign);
+  afterStateChange();
   render();
   toast('已登记：已做完 ' + nDone + ' 个，待重做 ' + nRedo + ' 个（' + acctName(account) + '）');
 }
@@ -684,6 +950,7 @@ document.getElementById('manualRedoBtn').addEventListener('click', () => {
   });
   saveJSON(LS_REDO, redoList);
   saveJSON(LS_ASSIGN, assign);
+  afterStateChange();
   render();
   toast('已登记待重做：' + p.title_cn + '（' + acctName(account) + '）');
 });
@@ -724,6 +991,19 @@ document.getElementById('genBtn').addEventListener('click', () => {
 });
 
 document.getElementById('search').addEventListener('input', e => { query = e.target.value; renderList(); });
+document.getElementById('modeAutoBtn').addEventListener('click', () => {
+  setMode('auto');
+  toast('已切换到自动派单：系统自动排队，手机刷新自助拿下一组');
+});
+document.getElementById('modeManualBtn').addEventListener('click', () => {
+  setMode('manual');
+  toast('已切换到人工派单');
+});
+document.getElementById('genAutoBtn').addEventListener('click', () => {
+  computeAutoQueues();
+  render();
+  toast('自动队已更新，复制下方自动链接发给手机');
+});
 document.getElementById('onlyPoolBtn').addEventListener('click', function () {
   onlyPool = !onlyPool;
   this.classList.toggle('on', onlyPool);
@@ -767,7 +1047,7 @@ fetch('products.json')
   .then(data => {
     PRODUCTS = data;
     fillManualSelects();
-    render();
+    setMode(mode);
   })
   .catch(e => {
     document.getElementById('list').innerHTML = '<div class="empty">products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。</div>';
