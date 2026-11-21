@@ -81,6 +81,11 @@
   /* ===== 重做理由选择器（二级选项，可多选） ===== */
   .redo-panel { margin-top: 10px; border: 1px solid #e8590c; border-radius: 10px; padding: 12px; background: #fff7ed; }
   .redo-panel .rp-title { font-size: 14px; font-weight: 700; color: #e8590c; margin-bottom: 8px; }
+  .redo-panel .rp-imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .redo-panel .rp-imgs label { display: flex; align-items: center; gap: 4px; font-size: 14px; border: 1px solid #ddd; background: #fff; border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+  .redo-panel .rp-imgs label:has(input:checked) { border-color: #e8590c; background: #ffe8cc; font-weight: 700; }
+  .redo-panel .rp-imgs label.disabled { opacity: .45; cursor: default; }
+  .cell.pick-redo { outline: 3px solid #e8590c; outline-offset: -3px; }
   .redo-panel .rp-reasons { display: flex; flex-wrap: wrap; gap: 8px; }
   .redo-panel .rp-reasons label { display: flex; align-items: center; gap: 4px; font-size: 14px; border: 1px solid #ddd; background: #fff; border-radius: 7px; padding: 6px 10px; cursor: pointer; }
   .redo-panel .rp-reasons label:has(input:checked) { border-color: #e8590c; background: #ffe8cc; font-weight: 700; }
@@ -257,11 +262,9 @@ const REDO_REASONS = [
 function reasonLabel(code) { const r = REDO_REASONS.find(x => x.code === code); return r ? r.label : code; }
 function reasonsText(codes) { return (codes || []).map(reasonLabel).join('、'); }
 
-/* 自动同步通道：本账号的状态（已做完 + 待重做）推到共享格子，总包定时来拉。
-   SYNC_BLOBS 是 8 个号的格子 ID（jsonblob.com），由总包统一配；为空时不同步，只走手动复制。 */
-const SYNC_BLOBS = { 1: '', 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '' }; // TODO: 填入 8 个 jsonblob ID
-const SYNC_BLOB = SYNC_BLOBS[ACCT_ID] || '';
-const SYNC_URL = SYNC_BLOB ? 'https://jsonblob.com/api/jsonBlob/' + SYNC_BLOB : '';
+/* 自动同步通道：Firebase Realtime Database（paidang-sync 项目，测试模式 30 天公开读写）。
+   手机把状态推到 paidang/acct{N}.json，总包定时来拉。 */
+const SYNC_URL = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/acct' + ACCT_ID + '.json';
 let syncStatus = ''; // 上次推送结果：'ok' | 'fail' | ''
 function pushStateToChannel() {
   if (!SYNC_URL) return Promise.resolve(false);
@@ -271,7 +274,7 @@ function pushStateToChannel() {
     done: Object.keys(doneState),
     redos: Object.keys(redoState).map(pid => {
       const info = redoState[pid] || {};
-      return { pid: pid, set_no: info.set_no, title_cn: info.title_cn, time: info.time, reasons: info.reasons || [], note: info.note || '' };
+      return { pid: pid, set_no: info.set_no, title_cn: info.title_cn, time: info.time, reasons: info.reasons || [], note: info.note || '', images: info.images || [] };
     }),
     redos_img: Object.keys(redoImgState).flatMap(pid => {
       const entry = redoImgState[pid] || {};
@@ -410,6 +413,83 @@ function openImgRedoPicker(p, imgNo, fn, grid) {
   grid.insertAdjacentElement('afterend', panel);
 }
 
+/* 单张重做（多选版）：卡片上点“重做单张”，勾第几张（可多选）+ 勾理由，点提交一次标记多张。 */
+function openImgRedoPickerMulti(p, grid) {
+  const card = grid.parentElement;
+  if (card.querySelector('.redo-panel')) return; // 已打开一个理由面板就不再弹
+  const panel = document.createElement('div');
+  panel.className = 'redo-panel';
+  const title = document.createElement('div');
+  title.className = 'rp-title';
+  title.textContent = '选要重做的图（可多选），再勾理由，点提交';
+  panel.appendChild(title);
+  // 勾第几张
+  const imgBox = document.createElement('div');
+  imgBox.className = 'rp-imgs';
+  const imgCbs = [];
+  p.images.forEach((fn, i) => {
+    const imgNo = i + 1;
+    const lab = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = String(imgNo);
+    const flagged = isRedoImg(p, imgNo);
+    if (flagged) { cb.disabled = true; lab.classList.add('disabled'); }
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode('图' + imgNo + (flagged ? '（已待重做）' : '')));
+    imgBox.appendChild(lab);
+    imgCbs.push(cb);
+  });
+  panel.appendChild(imgBox);
+  // 理由（和单张一样，6 个多选）
+  const box = document.createElement('div');
+  box.className = 'rp-reasons';
+  REDO_REASONS.forEach(r => {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = r.code;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(r.label));
+    box.appendChild(lab);
+  });
+  panel.appendChild(box);
+  const note = document.createElement('input');
+  note.className = 'rp-note';
+  note.type = 'text';
+  note.placeholder = '补充说明（选填，比如：刀头画错了）';
+  panel.appendChild(note);
+  const btns = document.createElement('div');
+  btns.className = 'rp-btns';
+  const okBtn = document.createElement('button');
+  okBtn.className = 'rp-confirm';
+  okBtn.type = 'button';
+  okBtn.textContent = '提交重做';
+  okBtn.addEventListener('click', () => {
+    const picked = imgCbs.filter(x => x.checked && !x.disabled).map(x => parseInt(x.value, 10));
+    if (!picked.length) { toast('先勾要重做的图（图1/图2/图3）'); return; }
+    const reasons = Array.from(box.querySelectorAll('input:checked')).map(x => x.value);
+    const noteTxt = note.value.trim();
+    if (!redoImgState[String(p.pid)]) redoImgState[String(p.pid)] = { set_no: p.set_no, title_cn: p.title_cn, images: {} };
+    picked.forEach(imgNo => {
+      redoImgState[String(p.pid)].images[imgNo] = { fn: p.images[imgNo - 1], reasons: reasons, note: noteTxt, time: Date.now() };
+    });
+    saveJSON(LS_REDO_IMG, redoImgState);
+    pushStateToChannel();
+    render(currentAssigned);
+    toast('已标记重做：' + picked.map(n => '图' + n).join('、') + (reasons.length ? '（' + reasonsText(reasons) + '）' : '') + '，修好后替换');
+  });
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'rp-cancel';
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => { panel.remove(); });
+  btns.appendChild(okBtn);
+  btns.appendChild(cancelBtn);
+  panel.appendChild(btns);
+  grid.insertAdjacentElement('afterend', panel);
+}
+
 function renderStats(assignedList) {
   const assigned = assignedList.length;
   const done = assignedList.filter(isDone).length;
@@ -501,7 +581,8 @@ function render(assignedList) {
     const li = document.createElement('li');
     const span = document.createElement('span');
     const reasonStr = reasonsText(info.reasons);
-    span.textContent = '第' + p.set_no + '套 · 整组重做 · ' + p.title_cn + '（pid: ' + p.pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '') + (reasonStr ? ' · ' + reasonStr : '') + (info.note ? ' · ' + info.note : '');
+    const imgsStr = (info.images && info.images.length) ? ' · 图' + info.images.join('、图') + '不行' : '';
+    span.textContent = '第' + p.set_no + '套 · 整组重做' + imgsStr + ' · ' + p.title_cn + '（pid: ' + p.pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '') + (reasonStr ? ' · ' + reasonStr : '') + (info.note ? ' · ' + info.note : '');
     const btn = document.createElement('button');
     btn.className = 'restore';
     btn.type = 'button';
@@ -702,6 +783,27 @@ function buildCard(p) {
     title.className = 'rp-title';
     title.textContent = '哪里不行？可以多选，生图按这些理由重做';
     panel.appendChild(title);
+    // 勾哪几张图不行（图1/图2/图3/图4/图5，按本套实际张数出；勾上后对应那张图会描橙框，对得上）
+    const imgBox = document.createElement('div');
+    imgBox.className = 'rp-imgs';
+    const imgCbs = [];
+    const cells = Array.from(grid.querySelectorAll('.cell'));
+    p.images.forEach((fn, i) => {
+      const imgNo = i + 1;
+      const lab = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = String(imgNo);
+      cb.addEventListener('change', () => {
+        const cell = cells[i];
+        if (cell) cell.classList.toggle('pick-redo', cb.checked);
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode('图' + imgNo));
+      imgBox.appendChild(lab);
+      imgCbs.push(cb);
+    });
+    panel.appendChild(imgBox);
     const box = document.createElement('div');
     box.className = 'rp-reasons';
     REDO_REASONS.forEach(r => {
@@ -727,12 +829,13 @@ function buildCard(p) {
     okBtn.textContent = '确认重做';
     okBtn.addEventListener('click', () => {
       const reasons = Array.from(box.querySelectorAll('input:checked')).map(x => x.value);
+      const pickedImgs = imgCbs.filter(x => x.checked).map(x => parseInt(x.value, 10));
       // 按 pid 记进待重做：图不行要返工，从待发列表消失，不再推给本账号（和已做完一样不再出现）
-      redoState[String(p.pid)] = { time: Date.now(), set_no: p.set_no, title_cn: p.title_cn, reasons: reasons, note: note.value.trim() };
+      redoState[String(p.pid)] = { time: Date.now(), set_no: p.set_no, title_cn: p.title_cn, reasons: reasons, note: note.value.trim(), images: pickedImgs };
       saveJSON(LS_REDO, redoState);
       pushStateToChannel();
       render(currentAssigned);
-      toast('已标记重做' + (reasons.length ? '（' + reasonsText(reasons) + '）' : '') + '，不会再推给你');
+      toast('已标记重做' + (pickedImgs.length ? '（图' + pickedImgs.join('、图') + '不行）' : '') + (reasons.length ? '（' + reasonsText(reasons) + '）' : '') + '，不会再推给你');
     });
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'rp-cancel';
@@ -744,6 +847,16 @@ function buildCard(p) {
     panel.appendChild(btns);
     actions.insertAdjacentElement('afterend', panel);
   });
+  // 重做单张（多选版）：勾第几张（图1/图2/图3 可多选）+ 勾理由，点提交一次标记多张
+  const imgRedoBtn = document.createElement('button');
+  imgRedoBtn.className = 'redo-btn';
+  imgRedoBtn.type = 'button';
+  imgRedoBtn.textContent = '重做单张';
+  imgRedoBtn.addEventListener('click', () => {
+    if (card.querySelector('.redo-panel')) return; // 已打开就不再弹
+    openImgRedoPickerMulti(p, grid);
+  });
+  actions.appendChild(imgRedoBtn);
   const removeBtn = document.createElement('button');
   removeBtn.className = 'remove-btn';
   removeBtn.type = 'button';
@@ -957,7 +1070,8 @@ function copyRedoList(btn) {
   items.forEach((p, i) => {
     const info = redoState[String(p.pid)] || {};
     const reasonStr = reasonsText(info.reasons);
-    lines.push((i + 1) + '. 第' + p.set_no + '套 整组重做 ' + p.title_cn + ' pid ' + p.pid + (info.time ? '（' + fmtTime(info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
+    const imgsStr = (info.images && info.images.length) ? ' 图' + info.images.join('、图') + '不行' : '';
+    lines.push((i + 1) + '. 第' + p.set_no + '套 整组重做' + imgsStr + ' ' + p.title_cn + ' pid ' + p.pid + (info.time ? '（' + fmtTime(info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
   });
   imgItems.forEach((it, i) => {
     const reasonStr = reasonsText(it.info.reasons);
@@ -1038,13 +1152,11 @@ document.getElementById('refreshBtn').addEventListener('click', refreshBatch);
 function updateSyncLine() {
   const el = document.getElementById('syncLine');
   if (!el) return;
-  if (!SYNC_URL) { el.textContent = '自动同步还没配好，先用下面的“复制本机状态”发给总包'; return; }
   if (syncStatus === 'ok') el.textContent = '上次提交成功 ' + fmtTime(Date.now());
   else if (syncStatus === 'fail') el.textContent = '上次提交失败，请检查网络或用“复制本机状态”发给总包';
   else el.textContent = '';
 }
 document.getElementById('submitBtn').addEventListener('click', function () {
-  if (!SYNC_URL) { toast('自动同步还没配好，请用下面的“复制本机状态”发给总包'); return; }
   const btn = this;
   btn.disabled = true;
   btn.textContent = '提交中…';

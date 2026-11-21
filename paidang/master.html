@@ -268,9 +268,9 @@ function parseReasons(str) {
   }).filter((v, i, a) => a.indexOf(v) === i);
 }
 
-/* 自动同步通道：8 个号的格子 ID（jsonblob.com），总包定时去拉各手机推上来的状态。
-   为空时不同步，只走手动粘贴。 */
-const SYNC_BLOBS = { 1: '', 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '' }; // TODO: 填入 8 个 jsonblob ID
+/* 自动同步通道：Firebase Realtime Database（paidang-sync 项目，测试模式 30 天公开读写）。
+   总包定时去拉各手机推上来的状态（paidang/acct{N}.json）。 */
+const SYNC_BASE = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/acct';
 let lastPullTime = 0;
 let lastPullOk = false;
 function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
@@ -1012,8 +1012,6 @@ document.getElementById('syncClearBtn').addEventListener('click', () => {
 function updatePullStatus() {
   const el = document.getElementById('pullStatus');
   if (!el) return;
-  const anyBlob = ACCOUNTS.some(a => SYNC_BLOBS[a.id]);
-  if (!anyBlob) { el.textContent = '自动同步还没配好，先用下面的粘贴同步'; return; }
   if (!lastPullTime) { el.textContent = '正在拉取各手机状态…'; return; }
   el.textContent = '上次同步 ' + fmtTime(lastPullTime) + (lastPullOk ? ' ✓' : '（失败，稍后自动重试）');
 }
@@ -1069,10 +1067,10 @@ function applyPhoneState(accountId, data) {
   return { done: nDone, redo: nRedo };
 }
 function pullFromChannel() {
-  const jobs = ACCOUNTS.filter(a => SYNC_BLOBS[a.id]).map(a =>
-    fetch('https://jsonblob.com/api/jsonBlob/' + SYNC_BLOBS[a.id], { headers: { 'Accept': 'application/json' } })
+  const jobs = ACCOUNTS.map(a =>
+    fetch(SYNC_BASE + a.id + '.json', { headers: { 'Accept': 'application/json' } })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(data => applyPhoneState(a.id, data))
+      .then(data => { if (!data) return null; return applyPhoneState(a.id, data); })
       .catch(() => null)
   );
   if (!jobs.length) { updatePullStatus(); return Promise.resolve(false); }
