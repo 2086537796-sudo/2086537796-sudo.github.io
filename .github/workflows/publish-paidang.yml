@@ -1,0 +1,43 @@
+name: Publish paidang v1.0.4
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release ZIP
+        run: |
+          curl -fL -o /tmp/paidang-v1.0.4.zip "https://github.com/2086537796-sudo/2086537796-sudo.github.io/releases/download/paidang-v1.0.4/paidang-v1.0.4.zip"
+          ls -lh /tmp/paidang-v1.0.4.zip
+          unzip -l /tmp/paidang-v1.0.4.zip | head -n 100
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Extract into paidang/
+        run: |
+          rm -rf paidang
+          mkdir -p paidang
+          unzip -o /tmp/paidang-v1.0.4.zip -d paidang
+          ls -la paidang | head -n 100
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add paidang
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Deploy paidang v1.0.4 (auto-dispatch algorithm)"
+          git push origin main
+      - name: Delete this workflow file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git rm --ignore-unmatch .github/workflows/publish-paidang.yml
+          git commit -m "Remove temporary publish-paidang workflow (v1.0.4)" || echo "Nothing to remove"
+          git push origin main
