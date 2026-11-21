@@ -18,14 +18,19 @@ jobs:
           test -s paidang.zip
           unzip -o paidang.zip
           ls -la
-          SRC=$(dirname "$(find . -maxdepth 3 -name master.html | head -n 1)")
+          SRC=$(dirname "$(find . -maxdepth 3 -name master.html -not -path './paidang/*' | head -n 1)")
           echo "source dir: $SRC"
+          test -n "$SRC"
+          test "$SRC" != "./paidang"
+          test "$SRC" != "."
           test -f "$SRC/master.html"
           test -f "$SRC/acct.html"
           test -f "$SRC/products.json"
           echo "SRC=$SRC" >> "$GITHUB_ENV"
       - name: Move dispatch system into paidang/ and remove this workflow
         run: |
+          test "$SRC" != "./paidang"
+          test "$SRC" != "."
           rm -rf paidang
           mkdir -p paidang
           cp -a "$SRC/." paidang/
