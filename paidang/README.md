@@ -29,10 +29,28 @@
 |---|---|
 | `master.html` | 总包工作台：派单模式切换、待派送池子、派单（人工勾选 / 自动排队）、待重做、同步手机状态、数据统计、派单记录 |
 | `acct.html` | 子工作台：手机打开派单链接后只看到分给自己的品，可存图、已做完、重做、移除，顶部有刷新拉下一组（自动模式下刷新直接拿队里下一组） |
-| `products.json` | 产品目录（45 套，30 个 pid，与 `workspace/发图站/products.json` 同步）。加新品时同步更新这个文件 |
+| `products.json` | 产品目录（44 套，29 个 pid，与 `workspace/发图站/products.json` 同步）。加新品时同步更新这个文件；有 `cart_url` 的套在手机端卡片上显示「🛒 加购物车」按钮，没链接的套显示「⚠️ 需要做码」提醒 |
+| `qr_links.json` | 飞书选品表二维码解码结果（pid → TikTok affiliate 链接），由 `feishu_qr_to_cart.py` 生成 |
+| `feishu_qr_to_cart.py` | **飞书二维码转加购物车链接脚本**：读飞书「图文选品」表「爆品TAP码」sheet（A 列 pid、D 列生码二维码），只处理派单池里的 pid，下载二维码并解码成 TikTok 链接，写进 `products.json` 的 `cart_url` |
+| `decode_pool_qr.py` | 早期版解码脚本（读 /tmp 里预先抓好的表数据）；日常用 `feishu_qr_to_cart.py` 即可 |
 | `data/<套文件夹>/图N.jpg` | 各套的成图原图（148 张，约 26MB）。只含成图，不含主图 |
 | `test-auto.js` | 自动派单逻辑测试（`node test-auto.js`，跑真实代码，47 项断言） |
 | `README.md` | 本文件 |
+
+## 加购物车按钮（飞书选品表二维码转链接，2026-11-21）
+
+手机端每张产品卡片 pid 下方有一条黑色按钮「🛒 加购物车（跳 TikTok）」，一点就跳到 TikTok 打开该商品加购。链接来自飞书选品表「图文选品」→「爆品TAP码」sheet 的 D 列「生码」二维码，解码后是 TikTok affiliate 链接（`https://affiliate-us.tiktok.com/api/v1/share/...`）。
+
+总包工作台的池子列表里每套下面也有同样的加购物车链接。
+
+**重新跑脚本**（新品进池后补链接）：
+
+```bash
+cd ~/workspace/派单系统
+FEISHU_APP_ID=cli_xxx FEISHU_APP_SECRET=xxx /tmp/qrvenv/bin/python feishu_qr_to_cart.py
+```
+
+凭证从环境变量读，不写进文件。脚本只处理派单池里的 pid，三个表按顺序找（爆品TAP码 → 测试已出单&趋势品 → 杰-内容图文选品），第一个带二维码的为准。2026-11-21 首次跑（只查爆品TAP码）：23 个 pid 解出链接（35 套）；用户提醒三个表都要查后重跑：28 个 pid 解出链接（43 套）。没链接的套在手机端卡片和总包池子列表里都显示「⚠️ 需要做码」提醒（黄色底）。目前只剩香水礼盒（1732846646218690917）一个品没码——三个表里有 pid 但都没二维码，等表里补了码再跑一遍脚本即可。VGR 理发器（1731670540591927610）2026-11-21 20:42 用户说不要了，已从派单池 products.json 和 data/01-vgr-浴室晨光/ 里删掉（发图站里还留着，如也要删再说）。
 
 ## 部署到 GitHub Pages（不要动已有的发图站）
 

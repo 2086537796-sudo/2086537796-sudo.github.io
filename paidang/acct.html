@@ -52,6 +52,9 @@
 
   .save-btn { display: block; width: 100%; margin-top: 12px; height: 52px; border: none; border-radius: 10px; background: #e8590c; color: #fff; font-size: 18px; font-weight: 700; }
   .save-btn:disabled { background: #ccc; }
+  .cart-btn { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: 10px; height: 52px; border: none; border-radius: 10px; background: #000; color: #fff; font-size: 18px; font-weight: 700; text-decoration: none; }
+  .cart-btn:active { background: #333; }
+  .cart-missing { margin-top: 10px; padding: 12px; border-radius: 10px; background: #fff3cd; color: #856404; font-size: 15px; font-weight: 700; text-align: center; }
   .save-note { margin-top: 6px; font-size: 12px; color: #888; text-align: center; }
 
   .actions { display: flex; gap: 8px; margin-top: 10px; }
@@ -382,6 +385,22 @@ function buildCard(p) {
   copyBtn.addEventListener('click', () => copyPid(p.pid, copyBtn));
   pidRow.appendChild(copyBtn);
   card.appendChild(pidRow);
+
+  // 加购物车：一键跳转 TikTok 加购（链接来自飞书选品表二维码解码）
+  if (p.cart_url) {
+    const cartBtn = document.createElement('a');
+    cartBtn.className = 'cart-btn';
+    cartBtn.href = p.cart_url;
+    cartBtn.target = '_blank';
+    cartBtn.rel = 'noopener';
+    cartBtn.textContent = '🛒 加购物车（跳 TikTok）';
+    card.appendChild(cartBtn);
+  } else {
+    const cartMissing = document.createElement('div');
+    cartMissing.className = 'cart-missing';
+    cartMissing.textContent = '⚠️ 需要做码：飞书选品表里没这个品的二维码，补了码再跑脚本';
+    card.appendChild(cartMissing);
+  }
 
   const tRow = document.createElement('div');
   tRow.className = 'row';

@@ -170,7 +170,7 @@
   <section>
     <h2>同步手机状态 <span>（把手机上“复制本机状态”的文字粘贴到这里，一键登记已做完和待重做）</span></h2>
     <div class="sync-box">
-      <textarea id="syncText" placeholder="粘贴手机上复制的状态文字，例如：&#10;账号1 状态同步&#10;已做完（2）：&#10;- pid 1731670540591927610（第1套）&#10;待重做（1）：&#10;- pid 1730751473246310958（第10套）"></textarea>
+      <textarea id="syncText" placeholder="粘贴手机上复制的状态文字，例如：&#10;账号1 状态同步&#10;已做完（2）：&#10;- pid 1732113645767004247（第2套）&#10;待重做（1）：&#10;- pid 1730751473246310958（第10套）"></textarea>
       <div class="sync-row">
         <button id="syncBtn" type="button">解析并登记</button>
         <button id="syncClearBtn" class="ghost" type="button">清空输入框</button>
@@ -769,6 +769,24 @@ function renderList() {
     meta.textContent = 'pid: ' + p.pid + ' ｜ ' + p.style + ' ｜ ' + p.images.length + ' 张图';
     info.appendChild(title);
     info.appendChild(meta);
+    if (p.cart_url) {
+      const cart = document.createElement('div');
+      cart.className = 'meta';
+      const a = document.createElement('a');
+      a.href = p.cart_url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = '🛒 加购物车（跳 TikTok）';
+      cart.appendChild(a);
+      info.appendChild(cart);
+    } else {
+      const cartMissing = document.createElement('div');
+      cartMissing.className = 'meta';
+      cartMissing.style.color = '#e8590c';
+      cartMissing.style.fontWeight = '700';
+      cartMissing.textContent = '⚠️ 需要做码：飞书选品表里没这个品的二维码';
+      info.appendChild(cartMissing);
+    }
     if (mode === 'auto') {
       const autoHint = document.createElement('div');
       autoHint.className = 'meta';
