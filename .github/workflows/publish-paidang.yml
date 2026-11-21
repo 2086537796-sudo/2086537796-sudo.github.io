@@ -1,0 +1,41 @@
+name: Publish paidang
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download dispatch system ZIP from release paidang-v1.0.1
+        run: |
+          curl -L -o paidang.zip "https://github.com/2086537796-sudo/2086537796-sudo.github.io/releases/download/paidang-v1.0.1/default.zip"
+          ls -lh paidang.zip
+          test -s paidang.zip
+          unzip -o paidang.zip
+          ls -la
+          SRC=$(dirname "$(find . -maxdepth 3 -name master.html | head -n 1)")
+          echo "source dir: $SRC"
+          test -f "$SRC/master.html"
+          test -f "$SRC/acct.html"
+          test -f "$SRC/products.json"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+      - name: Move dispatch system into paidang/ and remove this workflow
+        run: |
+          rm -rf paidang
+          mkdir -p paidang
+          cp -a "$SRC/." paidang/
+          rm -rf "$SRC" paidang.zip
+          rm -f .github/workflows/publish-paidang.yml
+          ls -lh paidang/master.html paidang/acct.html paidang/products.json
+          find paidang/data -type f | wc -l
+          git config user.name "2086537796-sudo"
+          git config user.email "2086537796-sudo@users.noreply.github.com"
+          git add paidang .github/workflows/publish-paidang.yml
+          git status --short
+          git commit -m "Publish dispatch system from release paidang-v1.0.1 into paidang/ (45 sets)" || echo "nothing to commit"
+          git push
