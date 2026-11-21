@@ -378,7 +378,7 @@ async function fetchSetFiles(p) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('取图失败');
     const blob = await res.blob();
-    files.push(new File([blob], p.images[i], { type: blob.type || 'image/jpeg' }));
+    files.push(new File([blob], '图' + (i + 1) + '.' + ((blob.type || 'image/jpeg').split('/')[1] || 'jpg'), { type: blob.type || 'image/jpeg' }));
   }
   blobCache[p.set_no] = files;
   return files;
@@ -416,7 +416,7 @@ async function saveSingle(p, kind, index) {
       const res = await fetch(enc(p.folder + '/' + sub + name));
       if (!res.ok) throw new Error('取图失败');
       const blob = await res.blob();
-      const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+      const file = new File([blob], (kind === 'main' ? '主图' : '图') + (index + 1) + '.' + ((blob.type || 'image/jpeg').split('/')[1] || 'jpg'), { type: blob.type || 'image/jpeg' });
       await navigator.share({ files: [file] });
       toast('已弹出分享，选「存储到照片」即可');
       return;
