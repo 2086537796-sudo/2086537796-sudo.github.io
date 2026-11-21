@@ -2373,5 +2373,37 @@
   "zip": "第149套.zip",
   "cart_url": "",
   "ref": "主图.jpg"
+ },
+ {
+  "set_no": 150,
+  "folder": "150-homrelexa-风格10",
+  "pid": "1731649572648817016",
+  "title_cn": "HOMRELEXA 大号人体工学办公椅",
+  "title_en": "HOMRELEXA Big and Tall Executive Ergonomic Office Chair",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第150套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 151,
+  "folder": "151-homrelexa-风格5",
+  "pid": "1731649572648817016",
+  "title_cn": "HOMRELEXA 大号人体工学办公椅",
+  "title_en": "HOMRELEXA Big and Tall Executive Ergonomic Office Chair",
+  "style": "风格 5 拉踩对比",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第151套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
  }
 ]
