@@ -2771,5 +2771,22 @@
   "zip": "第198套.zip",
   "cart_url": "",
   "ref": "主图.jpg"
+ },
+ {
+  "set_no": 215,
+  "folder": "215-shark-风格5",
+  "pid": "1732571163004670880",
+  "title_cn": "Shark FacialPro Glow 焕肤仪 FH310",
+  "title_en": "Shark FacialPro Glow At Home Facial System - FH310",
+  "style": "风格 5 拉踩对比",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第215套.zip",
+  "cart_url": "AK69f3uYJLdX",
+  "ref": "主图.jpg",
+  "hot": true
  }
 ]
