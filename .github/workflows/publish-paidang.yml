@@ -1,0 +1,53 @@
+# publish-paidang.yml —— v1.0.8 用（已修 detached HEAD 问题）
+# 触发：Release 发布，或手动 workflow_dispatch。
+# 关键修复：checkout 显式指定 ref: main，避免 release 触发时 checkout 到 tag 的 detached HEAD 导致 git push 失败（v1.0.7 run #8 就是这么死的）。
+# 流程：下载本 Release 的 paidang-vX.Y.Z.zip → 解压替换 paidang/ → 提交推送 → 自删本工作流文件。
+name: publish-paidang
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Download release asset
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then TAG="$(gh release list --limit 1 --json tagName -q '.[0].tagName')"; fi
+          echo "TAG=$TAG"
+          gh release download "$TAG" -p "paidang-*.zip" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Replace paidang/
+        run: |
+          rm -rf paidang
+          mkdir paidang
+          unzip -q paidang-*.zip -d paidang-tmp
+          # zip 里根目录就是 products.json 等文件，直接挪进来
+          shopt -s dotglob
+          mv paidang-tmp/* paidang/
+          rmdir paidang-tmp
+          rm -f paidang-*.zip
+          ls paidang | head
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add paidang
+          git commit -m "paidang ${{ github.event.release.tag_name || 'manual' }}: update pool" || echo "nothing to commit"
+          git push origin main
+      - name: Remove this workflow
+        run: |
+          rm .github/workflows/publish-paidang.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/publish-paidang.yml
+          git commit -m "remove publish-paidang workflow" || echo "nothing to commit"
+          git push origin main
