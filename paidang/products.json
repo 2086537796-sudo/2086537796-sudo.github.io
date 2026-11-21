@@ -2253,5 +2253,37 @@
   "zip": "第142套.zip",
   "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cYM0GwjSR",
   "ref": "主图.jpg"
+ },
+ {
+  "pid": "1729495244225942828",
+  "title_cn": "SHEGLAM 一键气流自动卷发棒 Pro（自动旋转，360° 冷风定型）",
+  "title_en": "SHEGLAM HAIR One Touch Airflow Styler Pro | Auto Rotating",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "cart_url": "",
+  "ref": "主图.jpg",
+  "set_no": 143,
+  "folder": "143-sheglam-风格13",
+  "style": "风格 13 第一人称女装",
+  "zip": "第143套.zip"
+ },
+ {
+  "pid": "1729495244225942828",
+  "title_cn": "SHEGLAM 一键气流自动卷发棒 Pro（自动旋转，360° 冷风定型）",
+  "title_en": "SHEGLAM HAIR One Touch Airflow Styler Pro | Auto Rotating",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "cart_url": "",
+  "ref": "主图.jpg",
+  "set_no": 144,
+  "folder": "144-sheglam-风格5",
+  "style": "风格 5 拉踩对比",
+  "zip": "第144套.zip"
  }
 ]
