@@ -124,7 +124,7 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" style="color:#999;">版本 v1.0.18 · 2026-11-22 · 如果这里显示的不是 v1.0.18，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" style="color:#999;">版本 v1.0.19 · 2026-11-22 · 如果这里显示的不是 v1.0.19，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <main>
@@ -153,6 +153,7 @@
   <!-- 自动派单 -->
   <section id="autoSection" hidden>
     <h2>自动派单 <span>（系统自动排队，手机点刷新自助拿下一组）</span></h2>
+    <div id="dedupStatus" style="font-size:13px;color:#888;font-weight:700;margin-bottom:8px;">去重自检：等待首次计算…</div>
     <div id="autoAccts"></div>
     <div class="sync-row">
       <button id="genAutoBtn" type="button">生成 / 更新全部自动链接</button>
@@ -229,8 +230,9 @@
 </main>
 
 <footer>
-  防重复规则：一个 pid 同一时间只派给一个账号。已派给某账号、已被任何账号做完、正在待重做的 pid，<br>
-  都不会再派给别的账号；重做完成的新版只派回当初点重做的那个账号。<br>
+  防重复规则：一个 pid 同一时间只派给一个账号（加急也一样，只派一个号、插该号队首，绝不广播到多个号）。<br>
+  已派给某账号、已被任何账号做完、正在待重做的 pid，都不会再派给别的账号；重做完成的新版只派回当初点重做的那个账号。<br>
+  每次排队后自动做去重自检：同一套、同一 pid 绝不出现在两个号的队里，发现重复立即自动修正并在自动派单区公示。<br>
   改派 / 撤回：取消勾选后重新点「生成派单链接」，把新链接发给手机即可（旧链接作废）。<br>
   每组 10 个：一个账号一次最多拿 10 套，做完 10 套后手机点顶部「刷新」拉下一组。<br>
   自动派单：总包在「自动派单」区生成自动链接发给手机，手机点顶部「刷新」自助拿下一组；<br>
@@ -259,7 +261,7 @@ const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, 
 const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pid], clearedRedo:[pid]} ]
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
-const APP_VERSION = 'v1.0.18';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.19';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -289,6 +291,7 @@ let lastPullOk = false;
 function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
 let mode = 'manual';
 let autoQueues = {};   // { "1": [set_no...], "2": [...] } —— 自动派单的队（内存缓存，与 localStorage 同步）
+let lastDedupReport = { fixed: 0, time: 0 }; // 第 4 步去重校验的上次结果（页面公示用）
 let autoLinks = {};    // { "1": url, "2": url } —— 生成好的自动链接
 
 let PRODUCTS = [];
@@ -463,40 +466,63 @@ function computeAutoQueues() {
     });
     queues[String(a.id)] = toInsert.concat(rest);
   });
-  // 2.5 加急广播：products.json 里 urgent:true 的套，插到每个号队首。
-  //    同时把该 pid 的其它非加急套从各队里清掉（只留加急那套，避免旧套先被做掉、
-  //    把 pid 标成已做完导致加急套死掉；重做回流的套除外）。这样 8 台手机刷新后队首都直接看到这两条。
+  // 2.5 加急优先（2026-11-22 02:41 重写：加急只派一个号，绝不广播到 8 个号）。
+  //    旧版把加急套 unshift 到每个号队首，导致同一套出现在 8 台手机上——用户 2026-11-22 02:41
+  //    明确指出这是重复派送，要求彻底消灭。现改为：加急套只进一个号，插到该号队首；
+  //    定号规则：优先留在当前已持有该加急套的号（取 id 最小者，保证稳定不跳号），
+  //    若无任何号持有则分给队最短的号。同时把该 pid 的其它非加急套从各队里清掉
+  //    （只留加急那套，避免旧套先被做掉、把 pid 标成已做完导致加急套死掉；重做回流的套除外）。
   const retRedoSetNos = new Set(redoList.filter(r => r.status === 'returned').map(r => r.set_no));
   PRODUCTS.filter(p => p.urgent && bySetNo(p.set_no)).sort((a, b) => b.set_no - a.set_no).forEach(p => {
     const pid = String(p.pid);
     if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return;
+    // 定号（先定号，后清理，保证稳定不跳号）
+    let home = null;
+    const holders = ACCOUNTS.filter(a => (queues[String(a.id)] || []).includes(p.set_no));
+    if (holders.length) {
+      home = holders[0]; // ACCOUNTS 按 id 升序，第一个即 id 最小
+    } else {
+      ACCOUNTS.forEach(a => {
+        const q = queues[String(a.id)] || [];
+        if (!home && q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; })) home = a;
+      });
+    }
+    if (!home) {
+      let bestLen = Infinity;
+      ACCOUNTS.forEach(a => {
+        const q = queues[String(a.id)] || [];
+        if (q.length < bestLen) { bestLen = q.length; home = a; }
+      });
+    }
+    if (!home) return;
+    // 从所有号清掉该加急套（去重），再只插回 home 号的队首
     ACCOUNTS.forEach(a => {
-      let q = queues[String(a.id)];
-      q = q.filter(n => {
+      queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => n !== p.set_no);
+    });
+    // 该 pid 的其它非加急套也从各队清掉（重做回流除外）
+    ACCOUNTS.forEach(a => {
+      queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
         const pp = bySetNo(n);
         if (!pp || String(pp.pid) !== pid) return true;
         if (pp.urgent) return true;
         if (retRedoSetNos.has(n)) return true;
         return false;
       });
-      queues[String(a.id)] = q;
-      if (q.includes(p.set_no)) return;
-      q.unshift(p.set_no);
     });
+    queues[String(home.id)].unshift(p.set_no);
   });
   // 2.6 同品归一（2026-11-22 用户铁规：一个品绝不能派到两个号上）。
   //    若同一个 pid 的套散在多个号的队里，全部收到 set_no 最小的那套所在的号；
   //    其它号里的同 pid 套清掉（只清队里的，未做的套不受影响，下轮由第 3 步重新归位）。
-  //    例外：加急广播的 pid 不动（加急就是要 8 个号队首都有，见 2.5）。
+  //    2026-11-22 02:41 重写：取消旧版“加急 pid 除外”的例外——加急也不例外，
+  //    同一个 pid 的套无论如何只留在一个号上（加急套的单号归属由 2.5 定，2.6 只做兜底合并）。
   {
-    const urgentPids = new Set(PRODUCTS.filter(p => p.urgent).map(p => String(p.pid)));
     const pidAccounts = {};
     ACCOUNTS.forEach(a => {
       (queues[String(a.id)] || []).forEach(n => {
         const p = bySetNo(n);
         if (!p) return;
         const pid = String(p.pid);
-        if (urgentPids.has(pid)) return;
         (pidAccounts[pid] = pidAccounts[pid] || []).push({ a: a.id, n });
       });
     });
@@ -555,6 +581,47 @@ function computeAutoQueues() {
     if (!best) return;
     queues[String(best.id)].push(p.set_no);
   });
+  // 4. 最终去重校验（2026-11-22 02:41 新增：兜底防线，绝不允许任何重复出队）。
+  //    校验两条铁规：① 同一套 set_no 只出现在一号队里；② 同一个 pid 只出现在一号队里。
+  //    若发现违规，自动修正（留 set_no 最小的套所在的号），并记入 lastDedupReport 在页面上公示。
+  //    这一步每次排队都跑（每 5 秒同步一次），所以即使前面某步出 bug，重复也绝不会被推给手机。
+  let dedupFixed = 0;
+  {
+    const seenSet = new Map(); // set_no -> accountId
+    ACCOUNTS.forEach(a => {
+      queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
+        if (seenSet.has(n)) { dedupFixed++; return false; }
+        seenSet.set(n, a.id);
+        return true;
+      });
+    });
+    const pidSets = {};
+    ACCOUNTS.forEach(a => {
+      (queues[String(a.id)] || []).forEach(n => {
+        const p = bySetNo(n);
+        if (!p) return;
+        const pid = String(p.pid);
+        (pidSets[pid] = pidSets[pid] || []).push({ a: a.id, n });
+      });
+    });
+    Object.keys(pidSets).forEach(pid => {
+      const list = pidSets[pid];
+      const accounts = [...new Set(list.map(x => x.a))];
+      if (accounts.length < 2) return;
+      const target = list.slice().sort((x, y) => x.n - y.n)[0].a;
+      const move = list.filter(x => x.a !== target).map(x => x.n);
+      ACCOUNTS.forEach(a => {
+        if (a.id === target) return;
+        const before = (queues[String(a.id)] || []).length;
+        queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => !move.includes(n));
+        dedupFixed += before - (queues[String(a.id)] || []).length;
+      });
+      const tq = queues[String(target)] || [];
+      move.forEach(n => { if (!tq.includes(n)) tq.push(n); });
+      queues[String(target)] = tq;
+    });
+  }
+  lastDedupReport = { fixed: dedupFixed, time: Date.now() };
   saveAutoQueues(queues);
   return queues;
 }
@@ -597,6 +664,18 @@ function renderAuto() {
   sec.hidden = mode !== 'auto';
   if (mode !== 'auto') return;
   refreshAutoLinks();
+  const ds = document.getElementById('dedupStatus');
+  if (ds) {
+    if (lastDedupReport.time) {
+      ds.textContent = lastDedupReport.fixed > 0
+        ? '⚠️ 去重自检：上次计算发现并修正了 ' + lastDedupReport.fixed + ' 处重复（已自动修好）· ' + fmtTime(lastDedupReport.time)
+        : '✓ 去重自检：0 重复（同一套只在一号队里，同一 pid 只在一号队里）· ' + fmtTime(lastDedupReport.time);
+      ds.style.color = lastDedupReport.fixed > 0 ? '#e8590c' : '#2f9e44';
+    } else {
+      ds.textContent = '去重自检：等待首次计算…';
+      ds.style.color = '#888';
+    }
+  }
   const wrap = document.getElementById('autoAccts');
   wrap.innerHTML = '';
   ACCOUNTS.forEach(a => {
