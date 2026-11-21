@@ -2405,5 +2405,21 @@
   "zip": "第151套.zip",
   "cart_url": "",
   "ref": "主图.jpg"
+ },
+ {
+  "set_no": 152,
+  "folder": "152-gnc-风格10",
+  "pid": "1729386189118345319",
+  "title_cn": "GNC W22 太阳能充电宝",
+  "title_en": "GNC W22 Solar Power Bank",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第152套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
  }
 ]
