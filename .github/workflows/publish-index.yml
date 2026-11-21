@@ -1,0 +1,24 @@
+name: Publish index.html
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download index.html from release v1.0.1
+        run: |
+          curl -L -o index.html "https://github.com/2086537796-sudo/2086537796-sudo.github.io/releases/download/v1.0.1/index.html"
+          ls -lh index.html
+          test -s index.html
+      - name: Commit index.html and remove this workflow
+        run: |
+          rm -f .github/workflows/publish-index.yml
+          git config user.name "2086537796-sudo"
+          git config user.email "2086537796-sudo@users.noreply.github.com"
+          git add index.html .github/workflows/publish-index.yml
+          git status --short
+          git commit -m "Publish index.html from release v1.0.1" || echo "nothing to commit"
+          git push
