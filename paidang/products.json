@@ -2805,5 +2805,21 @@
   "cart_url": "AK69f3uYJLdX",
   "ref": "主图.jpg",
   "hot": true
+ },
+ {
+  "set_no": 232,
+  "folder": "232-ryse-风格10",
+  "pid": "1729411129010721790",
+  "title_cn": "RYSE Fuel 能量饮料 12 罐装",
+  "title_en": "RYSE Fuel Energy Drink - Pack of 12",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第232套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
  }
 ]
