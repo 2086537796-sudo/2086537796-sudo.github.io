@@ -225,7 +225,13 @@
 /* ================= 账号配置：加账号在这里加一行，最多 8 个 ================= */
 const ACCOUNTS = [
   { id: 1, name: '账号 1' },
-  { id: 2, name: '账号 2' }
+  { id: 2, name: '账号 2' },
+  { id: 3, name: '账号 3' },
+  { id: 4, name: '账号 4' },
+  { id: 5, name: '账号 5' },
+  { id: 6, name: '账号 6' },
+  { id: 7, name: '账号 7' },
+  { id: 8, name: '账号 8' }
 ];
 const BATCH = 10;              // 每组派 10 个
 const IMG_BASE = 'data/';
@@ -396,29 +402,33 @@ function computeAutoQueues() {
     });
     queues[String(a.id)] = toInsert.concat(rest);
   });
-  // 3. 新套增量追加：符合条件的套按 set_no 从大到小，每 10 个一组轮流分给各号，队尾追加
-  const takenPids = new Set();
-  ACCOUNTS.forEach(a => {
-    (queues[String(a.id)] || []).forEach(n => {
-      const p = bySetNo(n);
-      if (p) takenPids.add(String(p.pid));
-    });
-  });
+  // 3. 新套增量追加：符合条件的套（同 pid 的两套都要派）按 set_no 从大到小，
+  //    轮流分给各号——优先分给当前队里套数最少、且没有这个 pid 的号；新套只往队尾追加。
+  //    同 pid 的两套必定分到不同账号；同一号的队里绝不出现同 pid 的两套。
+  //    重做回流的套归第 2 步管，第 3 步不碰（避免把应回原号的重做套派给别的号）。
+  const retRedoSets = new Set(redoList.filter(r => r.status === 'returned').map(r => r.set_no));
   const candidates = PRODUCTS
     .filter(p => {
       const pid = String(p.pid);
-      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid) || takenPids.has(pid)) return false;
+      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
+      if (retRedoSets.has(p.set_no)) return false;
+      for (const a of ACCOUNTS) {
+        if ((queues[String(a.id)] || []).includes(p.set_no)) return false;
+      }
       return true;
     })
     .sort((x, y) => y.set_no - x.set_no);
-  let ai = 0, filled = 0;
   candidates.forEach(p => {
-    if (takenPids.has(String(p.pid))) return;
-    const acct = ACCOUNTS[ai % ACCOUNTS.length];
-    queues[String(acct.id)].push(p.set_no);
-    takenPids.add(String(p.pid));
-    filled++;
-    if (filled >= BATCH) { filled = 0; ai++; }
+    const pid = String(p.pid);
+    let best = null, bestLen = Infinity;
+    ACCOUNTS.forEach(a => {
+      const q = queues[String(a.id)] || [];
+      const hasPid = q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; });
+      if (hasPid) return;
+      if (q.length < bestLen) { bestLen = q.length; best = a; }
+    });
+    if (!best) return; // 没有能接的号（一个 pid 最多两套，8 个号总有空位；防呆）
+    queues[String(best.id)].push(p.set_no);
   });
   saveAutoQueues(queues);
   return queues;
