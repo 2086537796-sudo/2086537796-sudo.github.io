@@ -150,7 +150,7 @@
   </div>
   <div class="hint">做完先点“提交给总包”，把已做完和待重做发给总包；要继续做就点“拉下一组”，跳过已做完/已重做的，拿接下来没做过的 10 套</div>
   <div class="sync-line" id="syncLine"></div>
-  <div class="sync-line" style="color:#bbb;">子工作台 v1.0.15 · 2026-11-22</div>
+  <div class="sync-line" style="color:#bbb;">子工作台 v1.0.16 · 2026-11-22</div>
 </div>
 
 <header>
@@ -548,7 +548,7 @@ function render(assignedList) {
     listEl.appendChild(buildCard(p));
   });
   if (shown === 0 && AUTO_MODE) {
-    emptyEl.textContent = '这条队的货发完了，找总包要新链接 🔄';
+    emptyEl.textContent = '这条队的货发完了，总包补货后点「拉下一组」就能拿到新品 🔄';
   }
   emptyEl.hidden = shown !== 0;
 
@@ -1133,7 +1133,7 @@ function refreshBatch() {
     currentAssigned = computeAutoBatch();
     if (!currentAssigned.length) {
       render(currentAssigned);
-      toast('这条队的货发完了，找总包要新链接');
+      toast('这条队的货发完了，总包补货后重新点「拉下一组」');
       return;
     }
     render(currentAssigned);
@@ -1299,9 +1299,14 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
         const hint = document.querySelector('.refresh-bar .hint');
         if (hint) hint.textContent = '自动派单：做完先点“提交给总包”，再点“拉下一组”拿下一组，不用等总包发链接';
-        render(currentAssigned);
-        // 打开页面就从 Firebase 拿总包算好的最新队（有新队就换上重算）
-        fetchQueueFromFirebase().then(changed => { if (changed) { currentAssigned = computeAutoBatch(); render(currentAssigned); } });
+        // 先从 Firebase 拿总包算好的最新队，再渲染——不要先渲染链接旧队的残影。
+        // 旧逻辑是先渲染链接队、等 Firebase 回来再重算，链接队过期时用户会先看到不属于自己的套
+        // （比如已不在队里的 43 套闪一下又消失，2026-11-22 3 号实测）。fetch 失败也会 resolve，不会卡住。
+        document.getElementById('list').innerHTML = '<div class="empty" style="display:block">正在同步总包最新派单…</div>';
+        fetchQueueFromFirebase().then(changed => {
+          if (changed) { currentAssigned = computeAutoBatch(); }
+          render(currentAssigned);
+        });
       } else {
         currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
         const missing = ASSIGNED_SETS.length - currentAssigned.length;

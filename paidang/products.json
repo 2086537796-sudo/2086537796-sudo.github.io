@@ -1770,5 +1770,101 @@
   "zip": "第111套.zip",
   "cart_url": "",
   "ref": "主图.jpg"
+ },
+ {
+  "set_no": 112,
+  "folder": "112-gnc-风格8",
+  "pid": "1729386189118345319",
+  "title_cn": "GNC W22 太阳能充电宝",
+  "title_en": "GNC W22 Solar Power Bank",
+  "style": "风格 8 送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第112套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 113,
+  "folder": "113-gnc-风格9",
+  "pid": "1729386189118345319",
+  "title_cn": "GNC W22 太阳能充电宝",
+  "title_en": "GNC W22 Solar Power Bank",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第113套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 114,
+  "folder": "114-westinghouse-风格1",
+  "pid": "1732308279963849156",
+  "title_cn": "Westinghouse 1000 流明太阳能 LED 灯笼",
+  "title_en": "Westinghouse Solar Camping Lantern",
+  "style": "风格 1 通用类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第114套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 115,
+  "folder": "115-westinghouse-风格4",
+  "pid": "1732308279963849156",
+  "title_cn": "Westinghouse 1000 流明太阳能 LED 灯笼",
+  "title_en": "Westinghouse Solar Camping Lantern",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第115套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 116,
+  "folder": "116-product-风格13",
+  "pid": "1732356168622380010",
+  "title_cn": "Salud 2合1肌肤+美颜饮品混合粉（石榴味）",
+  "title_en": "Salud 2-in-1 Skin + Beauty Drink Mix Packets, Pomegranate",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第116套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 117,
+  "folder": "117-product-风格9",
+  "pid": "1732356168622380010",
+  "title_cn": "Salud 2合1肌肤+美颜饮品混合粉（石榴味）",
+  "title_en": "Salud 2-in-1 Skin + Beauty Drink Mix Packets, Pomegranate",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第117套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
  }
 ]
