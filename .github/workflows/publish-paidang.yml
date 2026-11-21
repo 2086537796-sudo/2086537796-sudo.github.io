@@ -1,0 +1,36 @@
+name: publish-paidang
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download paidang zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download v1.0.7 --repo 2086537796-sudo/2086537796-sudo.github.io --pattern 'paidang-v1.0.7.zip' --dir /tmp/paidang-rel
+      - name: Replace paidang/
+        run: |
+          rm -rf paidang
+          mkdir -p paidang
+          unzip -o /tmp/paidang-rel/paidang-v1.0.7.zip -d paidang
+          ls paidang
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add paidang
+          git commit -m "paidang v1.0.7: 66 sets" || echo "no changes"
+          git push
+      - name: Remove this workflow
+        run: |
+          rm -f .github/workflows/publish-paidang.yml
+          git add .github/workflows/publish-paidang.yml
+          git commit -m "remove publish-paidang workflow" || echo "no changes"
+          git push
