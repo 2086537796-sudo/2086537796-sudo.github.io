@@ -124,7 +124,7 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" style="color:#999;">版本 v1.0.19 · 2026-11-22 · 如果这里显示的不是 v1.0.19，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" style="color:#999;">版本 v1.0.20 · 2026-11-22 · 如果这里显示的不是 v1.0.20，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <main>
@@ -261,7 +261,7 @@ const LS_REDO = 'paidang_redo';     // [ {pid, account, set_no, title_cn, time, 
 const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pid], clearedRedo:[pid]} ]
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
-const APP_VERSION = 'v1.0.19';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.20';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -444,11 +444,17 @@ function computeAutoQueues() {
     });
   });
   // 2. 重做回流：该号 returned 的套移到队首（队里只剩未消费的套，队首就是未消费部分的队首）
+  //    注意（2026-11-22 02:50 修）：r.set_no 是原套号（旧版）；重做后新套号更大，要派新套不能派旧套。
+  //    所以按 pid 找该 pid 的最大 set_no（最新版）派最新版；若最新版就是原套号则派原套号。
+  //    否则重做完的套永远派不回原账号（旧套已退役、新套按第 3 步会流到最短队、未必是原账号）。
   ACCOUNTS.forEach(a => {
     const q = queues[String(a.id)];
     const retSets = redoList
       .filter(r => r.status === 'returned' && r.account === a.id)
-      .map(r => r.set_no)
+      .map(r => {
+        const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid)).map(p => p.set_no);
+        return sets.length ? Math.max.apply(null, sets) : r.set_no;
+      })
       .filter(n => bySetNo(n));
     if (!retSets.length) return;
     const rest = q.filter(n => !retSets.includes(n));
