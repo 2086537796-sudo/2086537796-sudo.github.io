@@ -2293,5 +2293,85 @@
   "folder": "144-sheglam-风格5",
   "style": "风格 5 拉踩对比",
   "zip": "第144套.zip"
+ },
+ {
+  "set_no": 145,
+  "folder": "145-aopo-风格4",
+  "pid": "1731671632272986911",
+  "title_cn": "AOPO 电动滑板车",
+  "title_en": "AOPO Adult Electric Scooter 350W",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第145套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 146,
+  "folder": "146-chemist-风格9",
+  "pid": "1732321182598533162",
+  "title_cn": "Chemist At Play 焕亮去角质身体护理三件套",
+  "title_en": "Chemist at Play Body Care Trio (AHA Body Lotion 5% / Daily Exfoliating Body Wash 4% / Brightening Body Wash 3%)",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第146套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 147,
+  "folder": "147-product-风格10",
+  "pid": "1732416036567814805",
+  "title_cn": "Glitterus 闪粉马克笔套装",
+  "title_en": "Glitterus Jumbo Art Marker Set - 12 Colors",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第147套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 148,
+  "folder": "148-product-风格9",
+  "pid": "1732416036567814805",
+  "title_cn": "Glitterus 闪粉马克笔套装",
+  "title_en": "Glitterus Jumbo Art Marker Set - 12 Colors",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第148套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 149,
+  "folder": "149-product-风格8",
+  "pid": "1732419456788173231",
+  "title_cn": "耶稣十字架骑士纪念币",
+  "title_en": "Jesus Cross Theme Commemorative Coin",
+  "style": "风格 8 送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第149套.zip",
+  "cart_url": "",
+  "ref": "主图.jpg"
  }
 ]
