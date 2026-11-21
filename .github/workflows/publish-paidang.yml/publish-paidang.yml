@@ -1,0 +1,77 @@
+name: Publish paidang v1.0.3
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release ZIP
+        run: |
+          curl -fL -o /tmp/paidang-v1.0.3.zip "https://github.com/2086537796-sudo/2086537796-sudo.github.io/releases/download/paidang-v1.0.3/paidang-v1.0.3.zip"
+          ls -lh /tmp/paidang-v1.0.3.zip
+          unzip -l /tmp/paidang-v1.0.3.zip | head -n 100
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Extract into paidang/
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/paidang-src
+          mkdir -p /tmp/paidang-src
+          unzip -q -o /tmp/paidang-v1.0.3.zip -d /tmp/paidang-src
+          echo "== extracted tree (top 3 levels) =="
+          find /tmp/paidang-src -maxdepth 3 | head -n 100
+          SRC="$(find /tmp/paidang-src -mindepth 1 -maxdepth 1 -type d -name '派单系统' | head -n 1)"
+          if [ -z "$SRC" ]; then
+            if [ -f /tmp/paidang-src/master.html ]; then
+              SRC=/tmp/paidang-src
+            else
+              echo "ERROR: no '派单系统' folder and no master.html at ZIP top level" >&2
+              exit 1
+            fi
+          fi
+          case "$SRC" in
+            ./paidang|paidang|.)
+              echo "ERROR: refusing unsafe source dir: $SRC" >&2
+              exit 1
+              ;;
+          esac
+          echo "SOURCE=$SRC"
+          ls "$SRC"
+          test -f "$SRC/master.html"
+          test -f "$SRC/acct.html"
+          rm -rf paidang
+          mkdir -p paidang
+          cp -a "$SRC"/. paidang/
+          echo "== paidang/ after copy =="
+          ls -la paidang | head -n 50
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add paidang
+          git status --short
+          git commit -m "Deploy paidang v1.0.3 (QR-to-cart links)" || echo "nothing to commit"
+          git push origin main
+      - name: Delete this workflow
+        if: always()
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          rm -f .github/workflows/publish-paidang.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo "workflow file already gone; nothing to commit"
+            exit 0
+          fi
+          git commit -m "Remove publish-paidang workflow after v1.0.3 deploy"
+          git push origin main
