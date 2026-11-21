@@ -1,674 +1,718 @@
 [
-  {
-    "set_no": 2,
-    "folder": "02-cider-流苏开衫",
-    "pid": "1732113645767004247",
-    "title_cn": "Cider 流苏开衫",
-    "title_en": "Cider Fringe Cardigan",
-    "style": "换脸对标 @taylorbise",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第2套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5fWRc6Fixn"
-  },
-  {
-    "set_no": 3,
-    "folder": "03-ariana-香水礼盒",
-    "pid": "1732846646218690917",
-    "title_cn": "ARIANA GRANDE VAULT COLLECTION 香水礼盒",
-    "title_en": "ARIANA GRANDE VAULT COLLECTION Perfume Gift Set",
-    "style": "风格 3 生活化节庆送礼",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第3套.zip"
-  },
-  {
-    "set_no": 4,
-    "folder": "04-dreame-扫拖机器人",
-    "pid": "1729461009794700193",
-    "title_cn": "DREAME D30 Ultra 扫拖机器人",
-    "title_en": "DREAME D30 Ultra Robot Vacuum and Mop",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg",
-      "图5.jpg"
-    ],
-    "zip": "第4套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69f3tqJZqW"
-  },
-  {
-    "set_no": 5,
-    "folder": "05-镁复合物",
-    "pid": "1729482835128784557",
-    "title_cn": "Magnesium Complex for Women 镁复合物",
-    "title_en": "Magnesium Complex for Women",
-    "style": "风格 1 通用类/库存焦虑",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第5套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69f0qm5kNK"
-  },
-  {
-    "set_no": 6,
-    "folder": "06-保暖袜",
-    "pid": "1731752751104888912",
-    "title_cn": "女士保暖中筒袜 5 双装",
-    "title_en": "Women's Warm Mid-Calf Socks 5 Pairs",
-    "style": "风格 14 四宫格小红书",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第6套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69kAr7rG3e"
-  },
-  {
-    "set_no": 7,
-    "folder": "07-eskute-电动自行车",
-    "pid": "1729506602529690818",
-    "title_cn": "ESKUTE V101 电动胖胎自行车",
-    "title_en": "ESKUTE V101 Electric Fat Tire E-Bike",
-    "style": "风格 9 生活化分享类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg",
-      "图5.jpg"
-    ],
-    "zip": "第7套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mJrnvDeBr"
-  },
-  {
-    "set_no": 8,
-    "folder": "08-ganiza-榨汁机",
-    "pid": "1730087968028201134",
-    "title_cn": "Ganiza 12 合 1 榨汁机",
-    "title_en": "Ganiza 12-in-1 Juicer Blender",
-    "style": "风格 4 沉浸式使用场景",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第8套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cmqVtN71e"
-  },
-  {
-    "set_no": 9,
-    "folder": "09-playboda-拼图板",
-    "pid": "1729408907265151607",
-    "title_cn": "Playboda 1500 片旋转拼图板",
-    "title_en": "Playboda 1500-Piece Rotating Puzzle Board",
-    "style": "风格 9 生活化分享类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第9套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cYM0GwjSR"
-  },
-  {
-    "set_no": 10,
-    "folder": "10-oq-非洲卷假发",
-    "pid": "1730751473246310958",
-    "title_cn": "OQ HAIR 非洲卷假发半头套 3 合 1",
-    "title_en": "[3 In 1 Half Wig] OQ HAIR Afro Curly Wear Go Glueless Half Wig 180% 250% Density Upgrade With Drawstring Cap Invisible Hairline Human Hair Wigs Beginner Friendly",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第10套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cilWazy7C"
-  },
-  {
-    "set_no": 11,
-    "folder": "11-mamushow-大波浪假发",
-    "pid": "1729744012846076601",
-    "title_cn": "Mamushow 13x6 大波浪假发",
-    "title_en": "Mamushow #4 Chocolate Brown 13x6 Body Wave Full Lace Frontal Human Hair Wigs",
-    "style": "风格 12 第三人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第11套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXS7dEu9t"
-  },
-  {
-    "set_no": 12,
-    "folder": "12-joyin-圣诞捏捏乐",
-    "pid": "1732745531673382919",
-    "title_cn": "JOYIN 圣诞捏捏乐 24 件",
-    "title_en": "JOYIN 24 Pcs Christmas Mochi Squishy Toys",
-    "style": "风格 3 生活化节庆送礼",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第12套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXXJpKiWd"
-  },
-  {
-    "set_no": 13,
-    "folder": "13-vevor-伸缩梯",
-    "pid": "1729483121756443700",
-    "title_cn": "VEVOR 伸缩梯 12.5ft",
-    "title_en": "VEVOR Telescoping Aluminum Ladder 12.5 ft",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg",
-      "图4.jpg"
-    ],
-    "zip": "第13套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXKDsrBL7"
-  },
-  {
-    "set_no": 14,
-    "folder": "14-dowinx-电竞椅",
-    "pid": "1732306620069417457",
-    "title_cn": "Dowinx 电竞椅",
-    "title_en": "Dowinx Gaming Chair",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第14套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6KwphlzPfF"
-  },
-  {
-    "set_no": 15,
-    "folder": "15-eufy-摄像头",
-    "pid": "1729425920303403792",
-    "title_cn": "eufy SoloCam S340 太阳能摄像头",
-    "title_en": "eufy SoloCam S340 Solar Security Camera",
-    "style": "风格 2 国防焦虑",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第15套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70ZeaWkCl6"
-  },
-  {
-    "set_no": 16,
-    "folder": "16-柴火炉",
-    "pid": "1731285269014548765",
-    "title_cn": "便携铸铁柴火炉",
-    "title_en": "Portable Cast Iron Wood Stove",
-    "style": "风格 4 沉浸式使用场景",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第16套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70on1PBdhV"
-  },
-  {
-    "set_no": 17,
-    "folder": "17-anpabo-小火车",
-    "pid": "1731509559000469944",
-    "title_cn": "ANPABO 儿童骑乘小火车",
-    "title_en": "ANPABO 12V 2-Seater Trackless Ride-on Train",
-    "style": "风格 3 生活化节庆送礼",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第17套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69f0MSaGf0"
-  },
-  {
-    "set_no": 18,
-    "folder": "18-aopo-滑板车",
-    "pid": "1731671632272986911",
-    "title_cn": "AOPO 电动滑板车",
-    "title_en": "AOPO Electric Scooter 350W",
-    "style": "风格 9 生活化分享类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第18套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5c2f5SYWWt"
-  },
-  {
-    "set_no": 19,
-    "folder": "19-美容面罩",
-    "pid": "1732309713013542929",
-    "title_cn": "7 色红光理疗 LED 美容面罩",
-    "title_en": "7-Color LED Light Therapy Face Mask",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第19套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70YUT0oPQb"
-  },
-  {
-    "set_no": 20,
-    "folder": "20-毛巾烘干桶",
-    "pid": "1731934360673161954",
-    "title_cn": "Sweetcrispy 20L 毛巾烘干桶",
-    "title_en": "Sweetcrispy 20L Towel Warmer",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第20套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6PTjIiJ9jH"
-  },
-  {
-    "set_no": 21,
-    "folder": "21-运动套装",
-    "pid": "1731887330794378206",
-    "title_cn": "女士金色拉链运动夹克 + 打底裤套装",
-    "title_en": "Women's Gold Zipper Jacket + Leggings Set",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第21套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyCSfgSC"
-  },
-  {
-    "set_no": 22,
-    "folder": "22-oq-非洲卷假发-新版",
-    "pid": "1730751473246310958",
-    "title_cn": "OQ HAIR 非洲卷假发半头套 3 合 1（新版）",
-    "title_en": "[3 In 1 Half Wig] OQ HAIR Afro Curly Wear Go Glueless Half Wig (New Version)",
-    "style": "风格 13 第一人称女装（对标风格重做）",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第22套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cilWazy7C"
-  },
-  {
-    "set_no": 23,
-    "folder": "23-mamushow-大波浪假发-新版",
-    "pid": "1729744012846076601",
-    "title_cn": "Mamushow 13x6 大波浪假发（新版）",
-    "title_en": "Mamushow #4 Chocolate Brown 13x6 Body Wave Full Lace Frontal Human Hair Wigs (New Version)",
-    "style": "风格 12 第三人称女装（对标风格重做）",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第23套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXS7dEu9t"
-  },
-  {
-    "set_no": 24,
-    "folder": "24-dowinx-电竞椅-风格4",
-    "pid": "1732306620069417457",
-    "title_cn": "Dowinx 人体工学按摩腰靠电竞椅（带脚踏）",
-    "title_en": "Dowinx Ergonomic Massage Lumbar Gaming Chair with Footrest",
-    "style": "风格 4 沉浸式使用场景",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第24套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6KwphlzPfF"
-  },
-  {
-    "set_no": 25,
-    "folder": "25-chemist-风格12",
-    "pid": "1732321182598533162",
-    "title_cn": "Chemist At Play 三件套（AHA 身体乳 5% + 日常去角质沐浴露 4% + 提亮沐浴露 3%）",
-    "title_en": "Chemist At Play 3-Piece Body Care Set (AHA Body Lotion 5% + Daily Exfoliating Body Wash 4% + Brightening Body Wash 3%)",
-    "style": "风格 12 第三人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第25套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5ehlRQ4oHx"
-  },
-  {
-    "set_no": 26,
-    "folder": "26-chemist-风格13",
-    "pid": "1732321182598533162",
-    "title_cn": "Chemist At Play 三件套（AHA 身体乳 5% + 日常去角质沐浴露 4% + 提亮沐浴露 3%）",
-    "title_en": "Chemist At Play 3-Piece Body Care Set (AHA Body Lotion 5% + Daily Exfoliating Body Wash 4% + Brightening Body Wash 3%)",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第26套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5ehlRQ4oHx"
-  },
-  {
-    "set_no": 27,
-    "folder": "27-rhino-绑带-风格10",
-    "pid": "1729405110248771668",
-    "title_cn": "Rhino USA 棘轮绑带 4 件装",
-    "title_en": "Rhino USA Retractable Ratchet Tie-Down Straps 4-Pack (Medium-Duty)",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第27套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6Q3OMpJKX9"
-  },
-  {
-    "set_no": 28,
-    "folder": "28-rhino-绑带-风格4",
-    "pid": "1729405110248771668",
-    "title_cn": "Rhino USA 棘轮绑带 4 件装",
-    "title_en": "Rhino USA Retractable Ratchet Tie-Down Straps 4-Pack (Medium-Duty)",
-    "style": "风格 4 沉浸式使用场景",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第28套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6Q3OMpJKX9"
-  },
-  {
-    "set_no": 29,
-    "folder": "29-momcozy-奶瓶机-风格10",
-    "pid": "1729598425179198439",
-    "title_cn": "Momcozy 奶瓶机（KleanPal Pro 奶瓶清洗消毒烘干一体机）",
-    "title_en": "Momcozy KleanPal Pro Baby Bottle Washer, Sterilizer & Dryer",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第29套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mNpGtx4wm"
-  },
-  {
-    "set_no": 30,
-    "folder": "30-momcozy-奶瓶机-风格13",
-    "pid": "1729598425179198439",
-    "title_cn": "Momcozy 奶瓶机（KleanPal Pro 奶瓶清洗消毒烘干一体机）",
-    "title_en": "Momcozy KleanPal Pro Baby Bottle Washer, Sterilizer & Dryer",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第30套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mNpGtx4wm"
-  },
-  {
-    "set_no": 31,
-    "folder": "31-colorwow-风格13",
-    "pid": "1729386045344158341",
-    "title_cn": "Color Wow 定型喷雾（Style on Steroids）",
-    "title_en": "Color Wow Style on Steroids Texture + Finishing Spray",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第31套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mJJlrWuQT"
-  },
-  {
-    "set_no": 32,
-    "folder": "32-colorwow-风格5",
-    "pid": "1729386045344158341",
-    "title_cn": "Color Wow 定型喷雾（Style on Steroids）",
-    "title_en": "Color Wow Style on Steroids Texture + Finishing Spray",
-    "style": "风格 5 拉踩对比",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第32套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mJJlrWuQT"
-  },
-  {
-    "set_no": 33,
-    "folder": "33-shark-风格10",
-    "pid": "1732305963897557680",
-    "title_cn": "Shark WANDVAC WV201 手持吸尘器（玫瑰金）",
-    "title_en": "Shark WANDVAC WV201 Cordless Handheld Vacuum (Rose Gold)",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第33套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6Kwrilozin"
-  },
-  {
-    "set_no": 34,
-    "folder": "34-bluey-风格8",
-    "pid": "1732552230009344024",
-    "title_cn": "Bluey Toniebox 2 套装（粉色 Toniebox + Bingo/Bluey/Muffin 三只）",
-    "title_en": "Toniebox 2 Bluey Starter Set (Pink Toniebox + Bingo, Bluey & Muffin Tonies)",
-    "style": "风格 8 送礼",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第34套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70Re1hAs2u"
-  },
-  {
-    "set_no": 35,
-    "folder": "35-bluey-风格4",
-    "pid": "1732552230009344024",
-    "title_cn": "Bluey Toniebox 2 套装（粉色 Toniebox + Bingo/Bluey/Muffin 三只）",
-    "title_en": "Toniebox 2 Bluey Starter Set (Pink Toniebox + Bingo, Bluey & Muffin Tonies)",
-    "style": "风格 4 沉浸式使用场景",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第35套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70Re1hAs2u"
-  },
-  {
-    "set_no": 36,
-    "folder": "36-护颈枕-风格10",
-    "pid": "1730261669388521504",
-    "title_cn": "护颈枕（X/蝴蝶型记忆棉护颈枕，中间圆孔）",
-    "title_en": "Contoured Memory Foam Neck Pillow (X/Butterfly Shape)",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第36套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyIdj0jB"
-  },
-  {
-    "set_no": 37,
-    "folder": "37-护颈枕-风格13",
-    "pid": "1730261669388521504",
-    "title_cn": "护颈枕（X/蝴蝶型记忆棉护颈枕，中间圆孔）",
-    "title_en": "Contoured Memory Foam Neck Pillow (X/Butterfly Shape)",
-    "style": "风格 13 第一人称女装",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第37套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyIdj0jB"
-  },
-  {
-    "set_no": 38,
-    "folder": "38-feppo-保温托盘-风格3",
-    "pid": "1732210098822615777",
-    "title_cn": "FEPPO 保温托盘（三片式电热保温板）",
-    "title_en": "FEPPO Electric Warming Tray (3-Panel)",
-    "style": "风格 3 生活化节庆送礼",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第38套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5fr9k6gSET"
-  },
-  {
-    "set_no": 39,
-    "folder": "39-feppo-保温托盘-风格10",
-    "pid": "1732210098822615777",
-    "title_cn": "FEPPO 保温托盘（三片式电热保温板）",
-    "title_en": "FEPPO Electric Warming Tray (3-Panel)",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第39套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5fr9k6gSET"
-  },
-  {
-    "set_no": 40,
-    "folder": "40-aopo-滑板车-风格10",
-    "pid": "1731671632272986911",
-    "title_cn": "AOPO 成人电动滑板车 350W",
-    "title_en": "AOPO Electric Scooter for Adults 350W",
-    "style": "风格 10 痛点类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第40套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5c2f5SYWWt"
-  },
-  {
-    "set_no": 41,
-    "folder": "41-面罩-风格3",
-    "pid": "1732309713013542929",
-    "title_cn": "7 色光疗 LED 美容面罩",
-    "title_en": "7-Color Light Therapy LED Beauty Face Mask",
-    "style": "风格 3 生活化节庆送礼",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第41套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70YUT0oPQb"
-  },
-  {
-    "set_no": 42,
-    "folder": "42-毛巾桶-风格4",
-    "pid": "1731934360673161954",
-    "title_cn": "Sweetcrispy 20L 浴室毛巾烘干桶",
-    "title_en": "Sweetcrispy 20L Bathroom Towel Warmer",
-    "style": "风格 4 沉浸式使用场景",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第42套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6PTjIiJ9jH"
-  },
-  {
-    "set_no": 43,
-    "folder": "43-运动套装-风格14",
-    "pid": "1731887330794378206",
-    "title_cn": "女士金拉链运动夹克+打底裤套装",
-    "title_en": "Women's Gold Zipper Sporty Jacket and Leggings Set",
-    "style": "风格 14 四宫格小红书",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第43套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyCSfgSC"
-  },
-  {
-    "set_no": 44,
-    "folder": "44-红大衣-风格9",
-    "pid": "1732837164865458507",
-    "title_cn": "男士圣诞老人风红色仿毛边长款大衣（白色仿毛边）",
-    "title_en": "Men's Santa Claus Fleece-Lined Coat, Red Christmas Longline Button-Up Jacket with White Faux Fur Trim",
-    "style": "风格 9 生活化分享类",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第44套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6ygNHnM2gx"
-  },
-  {
-    "set_no": 45,
-    "folder": "45-红大衣-风格11",
-    "pid": "1732837164865458507",
-    "title_cn": "男士圣诞老人风红色仿毛边长款大衣（白色仿毛边）",
-    "title_en": "Men's Santa Claus Fleece-Lined Coat, Red Christmas Longline Button-Up Jacket with White Faux Fur Trim",
-    "style": "风格 11 节日",
-    "images": [
-      "图1.jpg",
-      "图2.jpg",
-      "图3.jpg"
-    ],
-    "zip": "第45套.zip",
-    "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6ygNHnM2gx"
-  }
+ {
+  "set_no": 2,
+  "folder": "02-cider-流苏开衫",
+  "pid": "1732113645767004247",
+  "title_cn": "Cider 流苏开衫",
+  "title_en": "Cider Fringe Cardigan",
+  "style": "换脸对标 @taylorbise",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第2套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5fWRc6Fixn",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 3,
+  "folder": "03-ariana-香水礼盒",
+  "pid": "1732846646218690917",
+  "title_cn": "ARIANA GRANDE VAULT COLLECTION 香水礼盒",
+  "title_en": "ARIANA GRANDE VAULT COLLECTION Perfume Gift Set",
+  "style": "风格 3 生活化节庆送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第3套.zip",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 4,
+  "folder": "04-dreame-扫拖机器人",
+  "pid": "1729461009794700193",
+  "title_cn": "DREAME D30 Ultra 扫拖机器人",
+  "title_en": "DREAME D30 Ultra Robot Vacuum and Mop",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg",
+   "图5.jpg"
+  ],
+  "zip": "第4套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69f3tqJZqW",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 5,
+  "folder": "05-镁复合物",
+  "pid": "1729482835128784557",
+  "title_cn": "Magnesium Complex for Women 镁复合物",
+  "title_en": "Magnesium Complex for Women",
+  "style": "风格 1 通用类/库存焦虑",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第5套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69f0qm5kNK",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 6,
+  "folder": "06-保暖袜",
+  "pid": "1731752751104888912",
+  "title_cn": "女士保暖中筒袜 5 双装",
+  "title_en": "Women's Warm Mid-Calf Socks 5 Pairs",
+  "style": "风格 14 四宫格小红书",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第6套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69kAr7rG3e",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 7,
+  "folder": "07-eskute-电动自行车",
+  "pid": "1729506602529690818",
+  "title_cn": "ESKUTE V101 电动胖胎自行车",
+  "title_en": "ESKUTE V101 Electric Fat Tire E-Bike",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg",
+   "图5.jpg"
+  ],
+  "zip": "第7套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mJrnvDeBr",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 8,
+  "folder": "08-ganiza-榨汁机",
+  "pid": "1730087968028201134",
+  "title_cn": "Ganiza 12 合 1 榨汁机",
+  "title_en": "Ganiza 12-in-1 Juicer Blender",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第8套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cmqVtN71e",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 9,
+  "folder": "09-playboda-拼图板",
+  "pid": "1729408907265151607",
+  "title_cn": "Playboda 1500 片旋转拼图板",
+  "title_en": "Playboda 1500-Piece Rotating Puzzle Board",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第9套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cYM0GwjSR",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 10,
+  "folder": "10-oq-非洲卷假发",
+  "pid": "1730751473246310958",
+  "title_cn": "OQ HAIR 非洲卷假发半头套 3 合 1",
+  "title_en": "[3 In 1 Half Wig] OQ HAIR Afro Curly Wear Go Glueless Half Wig 180% 250% Density Upgrade With Drawstring Cap Invisible Hairline Human Hair Wigs Beginner Friendly",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第10套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cilWazy7C",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 11,
+  "folder": "11-mamushow-大波浪假发",
+  "pid": "1729744012846076601",
+  "title_cn": "Mamushow 13x6 大波浪假发",
+  "title_en": "Mamushow #4 Chocolate Brown 13x6 Body Wave Full Lace Frontal Human Hair Wigs",
+  "style": "风格 12 第三人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第11套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXS7dEu9t",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 12,
+  "folder": "12-joyin-圣诞捏捏乐",
+  "pid": "1732745531673382919",
+  "title_cn": "JOYIN 圣诞捏捏乐 24 件",
+  "title_en": "JOYIN 24 Pcs Christmas Mochi Squishy Toys",
+  "style": "风格 3 生活化节庆送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第12套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXXJpKiWd",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 13,
+  "folder": "13-vevor-伸缩梯",
+  "pid": "1729483121756443700",
+  "title_cn": "VEVOR 伸缩梯 12.5ft",
+  "title_en": "VEVOR Telescoping Aluminum Ladder 12.5 ft",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg",
+   "图4.jpg"
+  ],
+  "zip": "第13套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXKDsrBL7",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 14,
+  "folder": "14-dowinx-电竞椅",
+  "pid": "1732306620069417457",
+  "title_cn": "Dowinx 电竞椅",
+  "title_en": "Dowinx Gaming Chair",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第14套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6KwphlzPfF",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 15,
+  "folder": "15-eufy-摄像头",
+  "pid": "1729425920303403792",
+  "title_cn": "eufy SoloCam S340 太阳能摄像头",
+  "title_en": "eufy SoloCam S340 Solar Security Camera",
+  "style": "风格 2 国防焦虑",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第15套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70ZeaWkCl6",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 16,
+  "folder": "16-柴火炉",
+  "pid": "1731285269014548765",
+  "title_cn": "便携铸铁柴火炉",
+  "title_en": "Portable Cast Iron Wood Stove",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第16套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70on1PBdhV",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 17,
+  "folder": "17-anpabo-小火车",
+  "pid": "1731509559000469944",
+  "title_cn": "ANPABO 儿童骑乘小火车",
+  "title_en": "ANPABO 12V 2-Seater Trackless Ride-on Train",
+  "style": "风格 3 生活化节庆送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第17套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK69f0MSaGf0",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 18,
+  "folder": "18-aopo-滑板车",
+  "pid": "1731671632272986911",
+  "title_cn": "AOPO 电动滑板车",
+  "title_en": "AOPO Electric Scooter 350W",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第18套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5c2f5SYWWt",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 19,
+  "folder": "19-美容面罩",
+  "pid": "1732309713013542929",
+  "title_cn": "7 色红光理疗 LED 美容面罩",
+  "title_en": "7-Color LED Light Therapy Face Mask",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第19套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70YUT0oPQb",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 20,
+  "folder": "20-毛巾烘干桶",
+  "pid": "1731934360673161954",
+  "title_cn": "Sweetcrispy 20L 毛巾烘干桶",
+  "title_en": "Sweetcrispy 20L Towel Warmer",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第20套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6PTjIiJ9jH",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 21,
+  "folder": "21-运动套装",
+  "pid": "1731887330794378206",
+  "title_cn": "女士金色拉链运动夹克 + 打底裤套装",
+  "title_en": "Women's Gold Zipper Jacket + Leggings Set",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第21套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyCSfgSC",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 22,
+  "folder": "22-oq-非洲卷假发-新版",
+  "pid": "1730751473246310958",
+  "title_cn": "OQ HAIR 非洲卷假发半头套 3 合 1（新版）",
+  "title_en": "[3 In 1 Half Wig] OQ HAIR Afro Curly Wear Go Glueless Half Wig (New Version)",
+  "style": "风格 13 第一人称女装（对标风格重做）",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第22套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cilWazy7C",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 23,
+  "folder": "23-mamushow-大波浪假发-新版",
+  "pid": "1729744012846076601",
+  "title_cn": "Mamushow 13x6 大波浪假发（新版）",
+  "title_en": "Mamushow #4 Chocolate Brown 13x6 Body Wave Full Lace Frontal Human Hair Wigs (New Version)",
+  "style": "风格 12 第三人称女装（对标风格重做）",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第23套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6cXS7dEu9t",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 24,
+  "folder": "24-dowinx-电竞椅-风格4",
+  "pid": "1732306620069417457",
+  "title_cn": "Dowinx 人体工学按摩腰靠电竞椅（带脚踏）",
+  "title_en": "Dowinx Ergonomic Massage Lumbar Gaming Chair with Footrest",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第24套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6KwphlzPfF",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 25,
+  "folder": "25-chemist-风格12",
+  "pid": "1732321182598533162",
+  "title_cn": "Chemist At Play 三件套（AHA 身体乳 5% + 日常去角质沐浴露 4% + 提亮沐浴露 3%）",
+  "title_en": "Chemist At Play 3-Piece Body Care Set (AHA Body Lotion 5% + Daily Exfoliating Body Wash 4% + Brightening Body Wash 3%)",
+  "style": "风格 12 第三人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第25套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5ehlRQ4oHx",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 26,
+  "folder": "26-chemist-风格13",
+  "pid": "1732321182598533162",
+  "title_cn": "Chemist At Play 三件套（AHA 身体乳 5% + 日常去角质沐浴露 4% + 提亮沐浴露 3%）",
+  "title_en": "Chemist At Play 3-Piece Body Care Set (AHA Body Lotion 5% + Daily Exfoliating Body Wash 4% + Brightening Body Wash 3%)",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第26套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5ehlRQ4oHx",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 27,
+  "folder": "27-rhino-绑带-风格10",
+  "pid": "1729405110248771668",
+  "title_cn": "Rhino USA 棘轮绑带 4 件装",
+  "title_en": "Rhino USA Retractable Ratchet Tie-Down Straps 4-Pack (Medium-Duty)",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第27套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6Q3OMpJKX9",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 28,
+  "folder": "28-rhino-绑带-风格4",
+  "pid": "1729405110248771668",
+  "title_cn": "Rhino USA 棘轮绑带 4 件装",
+  "title_en": "Rhino USA Retractable Ratchet Tie-Down Straps 4-Pack (Medium-Duty)",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第28套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6Q3OMpJKX9",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 29,
+  "folder": "29-momcozy-奶瓶机-风格10",
+  "pid": "1729598425179198439",
+  "title_cn": "Momcozy 奶瓶机（KleanPal Pro 奶瓶清洗消毒烘干一体机）",
+  "title_en": "Momcozy KleanPal Pro Baby Bottle Washer, Sterilizer & Dryer",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第29套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mNpGtx4wm",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 30,
+  "folder": "30-momcozy-奶瓶机-风格13",
+  "pid": "1729598425179198439",
+  "title_cn": "Momcozy 奶瓶机（KleanPal Pro 奶瓶清洗消毒烘干一体机）",
+  "title_en": "Momcozy KleanPal Pro Baby Bottle Washer, Sterilizer & Dryer",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第30套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mNpGtx4wm",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 31,
+  "folder": "31-colorwow-风格13",
+  "pid": "1729386045344158341",
+  "title_cn": "Color Wow 定型喷雾（Style on Steroids）",
+  "title_en": "Color Wow Style on Steroids Texture + Finishing Spray",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第31套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mJJlrWuQT",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 32,
+  "folder": "32-colorwow-风格5",
+  "pid": "1729386045344158341",
+  "title_cn": "Color Wow 定型喷雾（Style on Steroids）",
+  "title_en": "Color Wow Style on Steroids Texture + Finishing Spray",
+  "style": "风格 5 拉踩对比",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第32套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5mJJlrWuQT",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 33,
+  "folder": "33-shark-风格10",
+  "pid": "1732305963897557680",
+  "title_cn": "Shark WANDVAC WV201 手持吸尘器（玫瑰金）",
+  "title_en": "Shark WANDVAC WV201 Cordless Handheld Vacuum (Rose Gold)",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第33套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6Kwrilozin",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 34,
+  "folder": "34-bluey-风格8",
+  "pid": "1732552230009344024",
+  "title_cn": "Bluey Toniebox 2 套装（粉色 Toniebox + Bingo/Bluey/Muffin 三只）",
+  "title_en": "Toniebox 2 Bluey Starter Set (Pink Toniebox + Bingo, Bluey & Muffin Tonies)",
+  "style": "风格 8 送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第34套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70Re1hAs2u",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 35,
+  "folder": "35-bluey-风格4",
+  "pid": "1732552230009344024",
+  "title_cn": "Bluey Toniebox 2 套装（粉色 Toniebox + Bingo/Bluey/Muffin 三只）",
+  "title_en": "Toniebox 2 Bluey Starter Set (Pink Toniebox + Bingo, Bluey & Muffin Tonies)",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第35套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70Re1hAs2u",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 36,
+  "folder": "36-护颈枕-风格10",
+  "pid": "1730261669388521504",
+  "title_cn": "护颈枕（X/蝴蝶型记忆棉护颈枕，中间圆孔）",
+  "title_en": "Contoured Memory Foam Neck Pillow (X/Butterfly Shape)",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第36套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyIdj0jB",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 37,
+  "folder": "37-护颈枕-风格13",
+  "pid": "1730261669388521504",
+  "title_cn": "护颈枕（X/蝴蝶型记忆棉护颈枕，中间圆孔）",
+  "title_en": "Contoured Memory Foam Neck Pillow (X/Butterfly Shape)",
+  "style": "风格 13 第一人称女装",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第37套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyIdj0jB",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 38,
+  "folder": "38-feppo-保温托盘-风格3",
+  "pid": "1732210098822615777",
+  "title_cn": "FEPPO 保温托盘（三片式电热保温板）",
+  "title_en": "FEPPO Electric Warming Tray (3-Panel)",
+  "style": "风格 3 生活化节庆送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第38套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5fr9k6gSET",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 39,
+  "folder": "39-feppo-保温托盘-风格10",
+  "pid": "1732210098822615777",
+  "title_cn": "FEPPO 保温托盘（三片式电热保温板）",
+  "title_en": "FEPPO Electric Warming Tray (3-Panel)",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第39套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5fr9k6gSET",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 40,
+  "folder": "40-aopo-滑板车-风格10",
+  "pid": "1731671632272986911",
+  "title_cn": "AOPO 成人电动滑板车 350W",
+  "title_en": "AOPO Electric Scooter for Adults 350W",
+  "style": "风格 10 痛点类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第40套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5c2f5SYWWt",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 41,
+  "folder": "41-面罩-风格3",
+  "pid": "1732309713013542929",
+  "title_cn": "7 色光疗 LED 美容面罩",
+  "title_en": "7-Color Light Therapy LED Beauty Face Mask",
+  "style": "风格 3 生活化节庆送礼",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第41套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70YUT0oPQb",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 42,
+  "folder": "42-毛巾桶-风格4",
+  "pid": "1731934360673161954",
+  "title_cn": "Sweetcrispy 20L 浴室毛巾烘干桶",
+  "title_en": "Sweetcrispy 20L Bathroom Towel Warmer",
+  "style": "风格 4 沉浸式使用场景",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第42套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6PTjIiJ9jH",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 43,
+  "folder": "43-运动套装-风格14",
+  "pid": "1731887330794378206",
+  "title_cn": "女士金拉链运动夹克+打底裤套装",
+  "title_en": "Women's Gold Zipper Sporty Jacket and Leggings Set",
+  "style": "风格 14 四宫格小红书",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第43套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6MUyCSfgSC",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 44,
+  "folder": "44-红大衣-风格9",
+  "pid": "1732837164865458507",
+  "title_cn": "男士圣诞老人风红色仿毛边长款大衣（白色仿毛边）",
+  "title_en": "Men's Santa Claus Fleece-Lined Coat, Red Christmas Longline Button-Up Jacket with White Faux Fur Trim",
+  "style": "风格 9 生活化分享类",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第44套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6ygNHnM2gx",
+  "ref": "主图.jpg"
+ },
+ {
+  "set_no": 45,
+  "folder": "45-红大衣-风格11",
+  "pid": "1732837164865458507",
+  "title_cn": "男士圣诞老人风红色仿毛边长款大衣（白色仿毛边）",
+  "title_en": "Men's Santa Claus Fleece-Lined Coat, Red Christmas Longline Button-Up Jacket with White Faux Fur Trim",
+  "style": "风格 11 节日",
+  "images": [
+   "图1.jpg",
+   "图2.jpg",
+   "图3.jpg"
+  ],
+  "zip": "第45套.zip",
+  "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6ygNHnM2gx",
+  "ref": "主图.jpg"
+ }
 ]

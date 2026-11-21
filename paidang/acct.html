@@ -57,6 +57,11 @@
   .cart-missing { margin-top: 10px; padding: 12px; border-radius: 10px; background: #fff3cd; color: #856404; font-size: 15px; font-weight: 700; text-align: center; }
   .save-note { margin-top: 6px; font-size: 12px; color: #888; text-align: center; }
 
+  /* ===== 产品原图对照：只看不下载 ===== */
+  .ref { margin-top: 12px; border-top: 1px dashed #ddd; padding-top: 10px; }
+  .ref .ref-label { font-size: 13px; color: #888; margin-bottom: 6px; }
+  .ref img { width: 100%; max-width: 360px; margin: 0 auto; border-radius: 8px; background: #eee; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; pointer-events: none; }
+
   .actions { display: flex; gap: 8px; margin-top: 10px; }
   .actions button { flex: 1; height: 46px; border-radius: 8px; font-size: 16px; }
   .done-btn { border: 1px solid #2f9e44; background: #fff; color: #2f9e44; font-weight: 700; }
@@ -433,6 +438,24 @@ function buildCard(p) {
     grid.appendChild(cell);
   });
   card.appendChild(grid);
+
+  // 产品原图对照：只看不下载（不进 p.images，所以“存到相册”不会带上它；图片本身禁长按、禁点开）
+  if (p.ref) {
+    const ref = document.createElement('div');
+    ref.className = 'ref';
+    const refLabel = document.createElement('div');
+    refLabel.className = 'ref-label';
+    refLabel.textContent = '产品原图对照（只看，检查成图有没有把产品画变形；不下载）';
+    ref.appendChild(refLabel);
+    const refImg = document.createElement('img');
+    refImg.src = imgURL(p, p.ref);
+    refImg.alt = '产品原图';
+    refImg.loading = 'lazy';
+    refImg.draggable = false;
+    refImg.addEventListener('contextmenu', e => e.preventDefault());
+    ref.appendChild(refImg);
+    card.appendChild(ref);
+  }
 
   // 存到相册
   const saveBtn = document.createElement('button');
