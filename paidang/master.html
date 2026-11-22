@@ -124,8 +124,10 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" style="color:#999;">版本 v1.0.22 · 2026-11-22 · 如果这里显示的不是 v1.0.22，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" style="color:#999;">版本 v1.0.25 · 2026-11-22 · 如果这里显示的不是 v1.0.25，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
+
+<div id="bootBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;"></div>
 
 <main>
   <!-- 派单模式切换 -->
@@ -262,7 +264,7 @@ const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pi
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
-const APP_VERSION = 'v1.0.24';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.25';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -292,6 +294,10 @@ let lastPullOk = false;
 let bootReady = false; // v1.0.24 ready 门：第一次成功拉到各手机状态之前，不许把算好的队推到 Firebase。
 // 启动时本机 done/redo 可能还是旧的/空的，先算队就推会把“没做过”的错队发下去（2026-11-22 10:27 大洗牌的根因之一）。
 // 本地 localStorage 照常保存，只是不推云端；第一次拉取成功后放行。
+let bootState = 'loading'; // v1.0.25 启动状态机：'loading' | 'ready' | 'degraded'。
+// 只有 'ready' 才能算队/推队。'degraded' = 云端恢复失败（sent.json 或手机状态拉不到），只读、不算队、不推队，
+// 等网络恢复后自动重试变回 'ready'。GPT 重设计 P0。
+let sentLoadOk = false; // v1.0.25：sent.json 是否成功读到（哪怕是空账也算成功；网络失败算失败，不能当成“已恢复”）
 let shrinkConflicts = {}; // v1.0.24：{ accountId: { master, incoming, time } } —— 手机推来的状态比总包存量缩水一半以上，疑似分脑覆盖
 function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
 let mode = 'manual';
@@ -398,6 +404,57 @@ function sentRecord(accountId, p) {
 }
 function sentSave() { saveJSON(LS_SENT, sentHistory); sentSyncFirebase(); }
 let _sentSyncAt = 0;
+// v1.0.25：从 Firebase 恢复发图账（取本地与云端并集，时间取最新）。返回 Promise<boolean> 表示是否成功读到云端。
+// 网络失败返回 false（不能当成“已恢复”——GPT 重设计 P0）。
+function restoreSentFromCloud() {
+  return fetch('https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(d => {
+      sentLoadOk = true;
+      if (d && d.h) {
+        let changed = false;
+        Object.keys(d.h).forEach(a => {
+          if (!sentHistory[a]) sentHistory[a] = {};
+          Object.keys(d.h[a] || {}).forEach(n => {
+            const e = d.h[a][n];
+            const cur = sentHistory[a][n];
+            if (!cur || (e && (e.time || 0) > (cur.time || 0))) { sentHistory[a][n] = e; changed = true; }
+          });
+        });
+        if (changed) sentSave();
+      }
+      return true;
+    })
+    .catch(() => { sentLoadOk = false; return false; });
+}
+// v1.0.25：degraded 时尝试恢复 READY。sent 账读到了且最近一次拉手机状态成功了，就变 READY 并算队。
+function maybeBecomeReady() {
+  if (bootState === 'ready') return Promise.resolve(true);
+  return restoreSentFromCloud().then(sentOk => {
+    if (sentOk && lastPullOk) {
+      bootState = 'ready';
+      bootReady = true;
+      updateBootBanner();
+      computeAutoQueues();
+      render();
+      return true;
+    }
+    bootState = 'degraded';
+    updateBootBanner();
+    return false;
+  });
+}
+// v1.0.25：启动状态横幅（只读提示）。没有对应元素时静默跳过。
+function updateBootBanner() {
+  const el = document.getElementById('bootBanner');
+  if (!el) return;
+  if (bootState === 'degraded') {
+    el.style.display = 'block';
+    el.textContent = '只读模式：云端状态还没恢复完成（发图账或手机状态拉不到），现在不算队、不推队，等网络恢复后自动恢复。不要在这时手动派单。';
+  } else {
+    el.style.display = 'none';
+  }
+}
 function sentSyncFirebase() {
   // 发图记号同步到 Firebase（备份+跨浏览器共享），节流 30 秒一次
   const now = Date.now();
@@ -452,16 +509,72 @@ function pidState(pid) {
 }
 /* 这套能不能派给 accountId？返回 {ok, why} */
 function canDispatch(p, accountId) {
-  const st = pidState(p.pid);
-  if (st.state === 'pool') return { ok: true };
+  // v1.0.25：先按任务身份查这套（爆品按 set_no——一个号做完一套，不连累同 pid 其他套；GPT 重设计 §1.5）。
+  if (isDone(p, accountId)) return { ok: false, why: '已做完' };
+  if (isPendRedo(p, accountId)) return { ok: false, why: '待重做' };
+  const pid = String(p.pid);
+  // 爆品：pidState 的 done/redo/assigned 是 pid 级的，对爆品不适用（8 套分 8 号）。
+  // 这套本身没做完、没待重做，就按“这套在不在某号”判 assigned；其余按发图账判。
+  if (isHotPid(pid)) {
+    const r = redoList.find(x => String(x.pid) === pid && x.status === 'returned');
+    if (r) {
+      const newest = Math.max.apply(null, PRODUCTS.filter(x => String(x.pid) === pid).map(x => x.set_no));
+      if (p.set_no === newest) {
+        if (r.account !== accountId) return { ok: false, why: '重做回流，只派回' + acctName(r.account) };
+        if (!sentCanSendRedo(accountId, p)) return { ok: false, why: '发图账：这套已发过' };
+        return { ok: true };
+      }
+    }
+    for (const a of ACCOUNTS) {
+      const arr = assign[String(a.id)] || [];
+      const q = autoQueues[String(a.id)] || [];
+      if (arr.includes(p.set_no) || q.includes(p.set_no)) return { ok: false, why: '这套已派给' + acctName(a.id) };
+    }
+    if (!sentCanSend(accountId, p)) return { ok: false, why: '发图账：这套或这品 24 小时内已发过（换号也不行）' };
+    return { ok: true };
+  }
+  // 非爆品：沿用 pidState，并过发图账（GPT 重设计 P1：人工派单也要查 sentCanSend）。
+  const st = pidState(pid);
+  if (st.state === 'pool') {
+    if (!sentCanSend(accountId, p)) return { ok: false, why: '发图账：这套或这品 24 小时内已发过（换号也不行）' };
+    return { ok: true };
+  }
   if (st.state === 'return') {
-    if (st.account === accountId) return { ok: true };
+    if (st.account === accountId) {
+      if (!sentCanSendRedo(accountId, p)) return { ok: false, why: '发图账：这套已发过' };
+      return { ok: true };
+    }
     return { ok: false, why: '重做回流，只派回' + acctName(st.account) };
   }
   if (st.state === 'assigned') return { ok: false, why: '已派给' + acctName(st.account) };
   if (st.state === 'done') return { ok: false, why: '已做完' };
   if (st.state === 'redo') return { ok: false, why: '待重做（' + acctName(st.account) + '）' };
   return { ok: false, why: '' };
+}
+// v1.0.25：任务身份（GPT 重设计 §1.5 / §5）。非爆品以 pid 为任务身份；爆品以 set_no 为独立任务身份。
+// 旧版 doneMap/pendRedo 全按 pid 记：爆品一个号做完一套，全 pid 8 套都会被判已做完、从各队清掉。
+// isDone(p, accountId)：这套（这个号）是不是已做完。爆品只认“这个号完成了这套”（set_no + 账号都对上）。
+// accountId 传 null 表示“任何号”（Step 3 选候选时用：这套被任何号做完了就不再是候选）。
+function isDone(p, accountId) {
+  const rec = doneMap[String(p.pid)];
+  if (!rec) return false;
+  if (isHotPid(p.pid)) {
+    // 爆品：set_no 对不上就不是这套；老数据没 set_no 时保守地判“没做完”（宁可多留一套，也不误删七套）
+    if (rec.set_no == null) return false;
+    if (String(rec.set_no) !== String(p.set_no)) return false;
+    return accountId == null ? true : rec.account === accountId;
+  }
+  return true;
+}
+// isPendRedo(p, accountId)：这套（这个号）是不是待重做。爆品只认这套的待重做。
+function isPendRedo(p, accountId) {
+  const r = redoList.find(x => String(x.pid) === String(p.pid) && x.status === 'pending');
+  if (!r) return false;
+  if (isHotPid(p.pid)) {
+    if (String(r.set_no) !== String(p.set_no)) return false;
+    return accountId == null ? true : r.account === accountId;
+  }
+  return true;
 }
 function accountTotal(accountId) {
   return (assign[String(accountId)] || []).length;
@@ -543,11 +656,13 @@ function autoReturnRedos() {
   if (changed) saveJSON(LS_REDO, redoList);
 }
 function computeAutoQueues() {
+  // v1.0.25 READY 门：没恢复完成不算队、不推队、不记账，只返回本地缓存的队（页面照常显示）。
+  // （旧版 setMode 里直接算队，手机状态还没回来就用本地旧状态算队并推云端。）
+  if (bootState !== 'ready') return loadAutoQueues();
   autoReturnRedos(); // 重做自动回流：有新版就自动标 returned，不用手动点
   const queues = loadAutoQueues();
-  const done = new Set(Object.keys(doneMap));
-  const pendRedo = new Set(redoList.filter(r => r.status === 'pending').map(r => String(r.pid)));
   const manualPids = manualAssignedPids();
+  // v1.0.25：done/pendRedo 不再用 pid 级 Set（爆品按 set_no 判，见 isDone/isPendRedo）。
   // 1. 清理各队：去掉 pid 已做完 / 待重做 / 被人工派单占用的套；去掉不在产品库里的套；去掉已退役的套
   ACCOUNTS.forEach(a => {
     queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
@@ -555,7 +670,8 @@ function computeAutoQueues() {
       if (!p) return false;
       if (isRetired(p)) return false; // 退役套永不留队
       const pid = String(p.pid);
-      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
+      // v1.0.25：用任务身份判（爆品按 set_no，不按 pid——一个号做完一套不连累同 pid 其他套）
+      if (isDone(p, a.id) || isPendRedo(p, a.id) || manualPids.has(pid)) return false;
       return true;
     });
   });
@@ -579,7 +695,8 @@ function computeAutoQueues() {
       if (!p) return false;
       if (isRetired(p)) return false;
       const pid = String(p.pid);
-      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
+      // v1.0.25：用任务身份判（爆品按 set_no）
+      if (isDone(p, a.id) || isPendRedo(p, a.id) || manualPids.has(pid)) return false;
       // 已在本号队里：移到队首（不拦——发图记号是进队时记的，重算时它已在账上，不能因此把它踢掉，否则新版每次重算都滑到队尾，v1.0.23 测试抓到）
       if (q.includes(n)) return true;
       if (!sentCanSendRedo(a.id, p)) return false; // 重做回流不走 24 小时规则（v1.0.23）：只拦同一套发过两次 / 已退役
@@ -602,7 +719,8 @@ function computeAutoQueues() {
   PRODUCTS.filter(p => p.urgent && bySetNo(p.set_no)).sort((a, b) => b.set_no - a.set_no).forEach(p => {
     const pid = String(p.pid);
     if (isRetired(p)) return; // 退役的加急套不派
-    if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return;
+    // v1.0.25：用任务身份判（爆品按 set_no）
+    if (isDone(p, null) || isPendRedo(p, null) || manualPids.has(pid)) return;
     // 定号（先定号，后清理，保证稳定不跳号）
     let home = null;
     const holders = ACCOUNTS.filter(a => (queues[String(a.id)] || []).includes(p.set_no));
@@ -685,7 +803,8 @@ function computeAutoQueues() {
     .filter(p => {
       const pid = String(p.pid);
       if (isRetired(p)) return false; // 退役套不派
-      if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
+      // v1.0.25：用任务身份判（爆品按 set_no，任何号做完了这套就不再是候选）
+      if (isDone(p, null) || isPendRedo(p, null) || manualPids.has(pid)) return false;
       if (retRedoSets.has(p.set_no)) return false;
       // 加急 pid 的非加急套不派（2.5 已把旧套清掉，这里不再补回来，否则旧套会先被做掉）——爆品除外
       if (urgentPids.has(pid) && !p.urgent && !isHotPid(pid)) return false;
@@ -817,7 +936,8 @@ function autoQueueStats(accountId) {
   const q = autoQueues[String(accountId)] || [];
   const doneCount = q.filter(n => {
     const p = bySetNo(n);
-    return p && doneMap[String(p.pid)] && doneMap[String(p.pid)].account === accountId;
+    // v1.0.25：按任务身份判（爆品按 set_no）
+    return p && isDone(p, accountId);
   }).length;
   const redoCount = q.filter(n => {
     const p = bySetNo(n);
@@ -900,7 +1020,7 @@ function setMode(m) {
   if (mb) mb.classList.toggle('on', mode === 'manual');
   const note = document.getElementById('modeNote');
   if (note) note.textContent = mode === 'auto' ? '自动：系统排队，手机刷新自助拿下一组' : '人工：你手动勾选派单';
-  computeAutoQueues();
+  // v1.0.25：setMode 只改界面模式，不再隐式算队。算队由启动 READY 后和 afterStateChange 负责（GPT 重设计 P0）。
   render();
 }
 /* 状态变了（同步 / 重做登记 / 重做完成）之后，刷新自动队并推给各手机。
@@ -1411,7 +1531,12 @@ function updatePullStatus() {
 function applyPhoneState(accountId, data) {
   if (!data || typeof data !== 'object') return { done: 0, redo: 0 };
   let nDone = 0, nRedo = 0, nRedoImg = 0;
-  const phoneDone = new Set((data.done || []).map(String));
+  // v1.0.25：done 带 set_no（爆品按 set_no 记任务身份）。新格式 [{pid, set_no}]，老格式 [pid 字符串] 也兼容（set_no 为 null）。
+  const phoneDone = new Map();
+  (data.done || []).forEach(item => {
+    if (typeof item === 'string') phoneDone.set(String(item), null);
+    else if (item && typeof item === 'object') phoneDone.set(String(item.pid), item.set_no != null ? parseInt(item.set_no, 10) : null);
+  });
   const phoneRedos = new Map((data.redos || []).map(r => [String(r.pid), r]));
   const phoneRedoImgs = (data.redos_img || []).slice();
   // 空包保护：手机推来一个完全空的状态（没已做完、没待重做、没单张重做），
@@ -1444,10 +1569,11 @@ function applyPhoneState(accountId, data) {
       if (doneMap[pid].account === accountId && !phoneDone.has(pid)) delete doneMap[pid];
     });
   }
-  phoneDone.forEach(pid => {
+  phoneDone.forEach((setNo, pid) => {
     if (!byPid(pid)) return;
     if (!doneMap[pid]) nDone++;
-    doneMap[pid] = { account: accountId, time: Date.now() };
+    // v1.0.25：done 记录带 set_no（爆品按 set_no 记任务身份）
+    doneMap[pid] = { account: accountId, time: Date.now(), set_no: setNo };
   });
   // 待重做：以格子为准整批对齐（该号的 pending；returned 的不动，除非手机又重做了同一 pid）
   if (!skipDeleteAlign) {
@@ -1511,28 +1637,31 @@ function applyPhoneState(accountId, data) {
   lastPhoneState[String(accountId)] = { done: phoneDone.size, redo: phoneRedos.size, redoImg: phoneRedoImgs.length, updated: data.updated || Date.now() };
   // 做完的 pid 从派单里移走；待重做（pending）的 pid 也从派单里移走（等重做完再派回）。
   // 已回池子的（returned）不动——它可能已经被重新派回原账号了。
+  // v1.0.25：按任务身份判（爆品按 set_no，一个号做完一套不连累同 pid 其他套）。
   ACCOUNTS.forEach(a => {
     assign[String(a.id)] = (assign[String(a.id)] || []).filter(n => {
       const pp = bySetNo(n);
       if (!pp) return true;
-      if (doneMap[String(pp.pid)]) return false;
-      const re = redoEntry(String(pp.pid));
-      if (re && re.status === 'pending') return false;
+      if (isDone(pp, a.id)) return false;
+      if (isPendRedo(pp, a.id)) return false;
       return true;
     });
   });
   return { done: nDone, redo: nRedo, redoImg: nRedoImg };
 }
 function pullFromChannel() {
+  // v1.0.25：返回值 = “拉取成功”（至少一个号的请求成功，哪怕返回空数据）。
+  // 旧版返回“至少一个号有实际数据”：8 台手机都没报过状态时返回 false，启动会被误判为失败进 DEGRADED、算不了队。
+  // 空数据是合法状态（还没人报过），不是网络失败；只有请求本身失败（HTTP 错误/断网）才算失败。
   const jobs = ACCOUNTS.map(a =>
     fetch(SYNC_BASE + a.id + '.json', { headers: { 'Accept': 'application/json' } })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(data => { if (!data) return null; return applyPhoneState(a.id, data); })
-      .catch(() => null)
+      .then(data => { if (!data) return 'empty'; return applyPhoneState(a.id, data); })
+      .catch(() => 'fail')
   );
   if (!jobs.length) { updatePullStatus(); return Promise.resolve(false); }
   return Promise.all(jobs).then(results => {
-    const ok = results.some(x => x !== null);
+    const ok = results.some(x => x !== 'fail'); // 至少一个号成功拉到（含空数据）
     lastPullTime = Date.now();
     lastPullOk = ok;
     if (ok) {
@@ -1694,32 +1823,31 @@ fetch('products.json?v=' + APP_VERSION)
   .then(data => {
     PRODUCTS = data;
     fillManualSelects();
-    // 2026-11-22 v1.0.23 修：发图记号必须先从 Firebase 恢复完成，再算队 / 拉手机状态。
-    // 旧版恢复是“发出去就不管”，setMode 里的 computeAutoQueues 会立刻算队并把本地（可能是空的）
-    // 账推送覆盖云端——2026-11-22 10:06 就是这么丢了 7 小时发图账，导致已发过的套可能重发。
-    // 现在等恢复完成再 setMode / 拉状态。
-    return fetch('https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json')
-      .then(r => r.ok ? r.json() : null)
-      .catch(() => null);
+    // v1.0.25 启动顺序（GPT 重设计 P0）：先恢复发图账，再拉手机状态，两者都成功才 READY。
+    // 发图账恢复失败不能当成“已恢复”（旧版 catch 后照常启动，就是 10:06 丢账的路径）。
+    return restoreSentFromCloud();
   })
-  .then(d => {
-    // 发图记号从 Firebase 恢复一次（换浏览器/清缓存后不丢账）：取本地与云端并集，时间取最新
-    if (d && d.h) {
-      let changed = false;
-      Object.keys(d.h).forEach(a => {
-        if (!sentHistory[a]) sentHistory[a] = {};
-        Object.keys(d.h[a] || {}).forEach(n => {
-          const e = d.h[a][n];
-          const cur = sentHistory[a][n];
-          if (!cur || (e && (e.time || 0) > (cur.time || 0))) { sentHistory[a][n] = e; changed = true; }
-        });
-      });
-      if (changed) sentSave();
+  .then(() => {
+    // 拉一次手机状态，等它完成再决定 READY / DEGRADED（setMode 不再隐式算队）。
+    return pullFromChannel();
+  })
+  .then(pullOk => {
+    if (sentLoadOk && pullOk) {
+      bootState = 'ready';
+      bootReady = true;
+    } else {
+      bootState = 'degraded';
     }
+    updateBootBanner();
     setMode(mode);
-    // 自动同步：打开就拉一次，之后每 5 秒拉一次各手机最新状态
-    pullFromChannel();
-    setInterval(pullFromChannel, 5000);
+    if (bootState === 'ready') computeAutoQueues();
+    render();
+    // 自动同步：之后每 5 秒拉一次各手机最新状态；degraded 时每次拉成功都尝试恢复 READY。
+    setInterval(() => {
+      pullFromChannel().then(ok => {
+        if (ok && bootState !== 'ready') maybeBecomeReady();
+      });
+    }, 5000);
   })
   .catch(e => {
     document.getElementById('list').innerHTML = '<div class="empty">products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。</div>';
