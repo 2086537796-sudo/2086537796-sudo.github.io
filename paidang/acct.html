@@ -150,7 +150,7 @@
   </div>
   <div class="hint">做完先点“提交给总包”，把已做完和待重做发给总包；要继续做就点“拉下一组”，跳过已做完/已重做的，拿接下来没做过的 10 套</div>
   <div class="sync-line" id="syncLine"></div>
-  <div class="sync-line" style="color:#bbb;">子工作台 v1.0.18 · 2026-11-22</div>
+  <div class="sync-line" id="versionLine" style="color:#bbb;">子工作台 v1.0.28 · 2026-11-22</div>
 </div>
 
 <header>
@@ -235,6 +235,8 @@ const ASSIGNED_SETS = (params.get('s') || '')
   .split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
 const ACCT_NAME = (ACCOUNTS.find(a => a.id === ACCT_ID) || {}).name || ('账号 ' + (ACCT_ID || '?'));
 const BATCH = 10;               // 每组拉 10 个
+const APP_VERSION = 'v1.0.28'; // 页面版本（显示在页头；与 master.html 统一管理，发现线上更新时提示刷新）
+const EMPTY_RECHECK_MS = 60000; // v1.0.28：队空时自动等补货，每 60 秒重新拉一次总包最新队
 /* 刷新时要跳过的 set_no：总包在链接里带的（?x=），别的账号手里的 + 已做完 + 待重做的（防重复）。
    没有 x 参数的旧链接也能打开，刷新时只按本机已做完/已重做过滤。 */
 const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0));
@@ -1214,12 +1216,18 @@ function refreshBatch() {
     if (unfinished > 0) {
       if (!confirm('这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会被跳过（之后找总包要新链接可以重新拿到）。')) return;
     }
+    const justSkipped = new Set(currentAssigned.map(p => p.set_no));
     currentAssigned.forEach(p => autoSeen.add(p.set_no));
     saveAutoSeen();
     currentAssigned = computeAutoBatch();
     if (!currentAssigned.length) {
-      render(currentAssigned);
-      toast('这条队的货发完了，总包补货后重新点「拉下一组」');
+      // v1.0.28：队空自动补货——先去 Firebase 拉总包最新队（可能刚补了货），刚跳过的这组不放出来
+      refillAutoBatchIfEmpty(justSkipped).then(ok => {
+        if (!ok) {
+          render(currentAssigned);
+          toast('这条队的货发完了，总包补货后重新点「拉下一组」');
+        }
+      });
       return;
     }
     render(currentAssigned);
@@ -1314,6 +1322,8 @@ document.getElementById('copyStatusBtn').addEventListener('click', function () {
 /* ================= 启动 ================= */
 let currentAssigned = [];
 document.getElementById('acctTitle').textContent = ACCT_NAME + ' · 子工作台' + (AUTO_MODE ? '（自动派单）' : '');
+// v1.0.28：页头版本从 APP_VERSION 动态填（旧版写死 v1.0.18，升版漏改会让用户以为没更新）。
+(function () { const v = document.getElementById('versionLine'); if (v) v.textContent = '子工作台 ' + APP_VERSION + ' · 2026-11-22'; })();
 
 function showError(msg) {
   const box = document.getElementById('errorBox');
@@ -1362,13 +1372,61 @@ function setupAutoQueue() {
   currentAssigned = computeAutoBatch();
 }
 
+/* ================= v1.0.28：队空自动补货 =================
+   根因：computeAutoBatch() 只看链接里的队 + 本机 autoSeen；队被“拉下一组”消费完后，
+   即使总包往 Firebase 推了新套，手机也不会自动拿，必须手动点刷新。
+   修成：当前这组没可做的套了（队空，或只剩已做完/已重做）时，自动去 Firebase 拉总包最新队；
+   拉到新队后，把 autoSeen 里“已在新队里”的套放出来——总包既然又把这套排进本号队里，
+   就是还要本号做，旧的跳过记录不能挡住它。keepSkipped 是这次调用方要求继续跳过的套
+   （比如刚点了“拉下一组”跳过的那组），不放出来。返回 Promise<boolean>：是否补到了新套。 */
+let emptyRecheckTimer = null;
+function clearEmptyRecheck() {
+  if (emptyRecheckTimer) { try { clearTimeout(emptyRecheckTimer); } catch (e) {} emptyRecheckTimer = null; }
+}
+function scheduleEmptyRecheck() {
+  if (!AUTO_MODE) return;
+  if (emptyRecheckTimer) return; // 已在等，别重复排
+  emptyRecheckTimer = setTimeout(() => {
+    emptyRecheckTimer = null;
+    if (!AUTO_MODE) return;
+    if (computeAutoBatch().length) return; // 已经有货了，不用再查
+    refillAutoBatchIfEmpty().then(ok => {
+      if (!ok && !computeAutoBatch().length) scheduleEmptyRecheck(); // 还空着，继续等总包补货
+    });
+  }, EMPTY_RECHECK_MS);
+}
+function refillAutoBatchIfEmpty(keepSkipped) {
+  if (!AUTO_MODE) return Promise.resolve(false);
+  if (computeAutoBatch().length) return Promise.resolve(false);
+  return fetchQueueFromFirebase().then(res => {
+    if (res === 'error') { toast('同步总包最新派单失败，请检查网络后刷新'); scheduleEmptyRecheck(); return false; }
+    if (res === 'empty') { scheduleEmptyRecheck(); return false; } // 总包队真是空的，等补货（定时再拉）
+    // 拉到新队：放出 autoSeen 里已在新队里的套（总包重排/重派回来的套要能重新出现）
+    let changed = false;
+    AUTO_QUEUE.forEach(n => {
+      if (autoSeen.has(n) && !(keepSkipped && keepSkipped.has(n))) { autoSeen.delete(n); changed = true; }
+    });
+    if (changed) saveAutoSeen();
+    currentAssigned = computeAutoBatch();
+    if (currentAssigned.length) {
+      clearEmptyRecheck();
+      render(currentAssigned);
+      window.scrollTo(0, 0);
+      toast('总包补货了，已拉到 ' + currentAssigned.length + ' 套');
+      return true;
+    }
+    scheduleEmptyRecheck();
+    return false;
+  });
+}
+
 if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUEUE.length)) {
   showError(AUTO_MODE
     ? '这个自动链接里没有排队信息（缺账号或队）。请找总包重新发一条自动链接给你。'
     : '这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
   renderStats([]);
 } else {
-  fetch('products.json?v=1.0.25')
+  fetch('products.json?v=' + APP_VERSION)
     .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
     .then(data => {
       PRODUCTS = data;
@@ -1393,12 +1451,19 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
           if (res === 'empty') {
             currentAssigned = [];
             render(currentAssigned);
-            toast('总包队是空的，等总包补货后重新打开链接');
+            toast('总包队是空的，等总包补货（会自动再拉，不用重开链接）');
+            scheduleEmptyRecheck(); // v1.0.28：空队时自动等补货，不用手动重开
             return;
           }
           if (res === 'error') toast('同步总包最新派单失败，显示的是链接里的旧队，请检查网络后刷新');
           currentAssigned = computeAutoBatch();
           render(currentAssigned);
+          // v1.0.28：队空自动补货——当前这组没可做的套了，自动拉总包最新队
+          if (!currentAssigned.length) {
+            refillAutoBatchIfEmpty().then(ok => {
+              if (!ok) { render(currentAssigned); toast('这条队暂时没有可做的套，等总包补货（会自动再拉）'); }
+            });
+          }
         });
       } else {
         currentAssigned = ASSIGNED_SETS.map(bySetNo).filter(Boolean);
