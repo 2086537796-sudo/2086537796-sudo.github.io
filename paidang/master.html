@@ -124,11 +124,15 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.29 · 2026-11-22 · 如果这里显示的不是 v1.0.29，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.30 · 2026-11-22 · 如果这里显示的不是 v1.0.30，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <div id="bootBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;"></div>
 <div id="versionBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;">检测到新版本，请刷新页面（不要用旧页面继续操作，旧页面写的数据格式可能和新版不一致）。</div>
+<div id="masterLockBanner" style="display:none; background:#fde8e8; color:#9b1c1c; border:1px solid #f8b4b4; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+  <span id="masterLockText"></span>
+  <button id="takeoverBtn" type="button" style="height:32px; padding:0 12px; border-radius:7px; border:1px solid #c92a2a; background:#fff; color:#c92a2a; font-size:13px; font-weight:700;">接管派单权</button>
+</div>
 
 <main>
   <!-- 派单模式切换 -->
@@ -267,7 +271,8 @@ const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, im
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
 const LS_SHRINK_WARNED = 'paidang_shrink_warned'; // v1.0.26：{ accountId: "master-incoming" } —— 缩水警告已弹过，同样数字不再重复弹（刷新页面也不重弹）
 const LS_SHRINK_RESTORED = 'paidang_shrink_restored'; // v1.0.26：{ accountId: timestamp } —— 上次把总包记录写回 Firebase 帮手机恢复的时间，5 分钟节流
-const APP_VERSION = 'v1.0.29';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const LS_LOCAL_LOCK = 'paidang_master_local_lock'; // v1.0.30：同机多标签页防双写锁
+const APP_VERSION = 'v1.0.30';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* v1.0.26 热修复（已上线）：页头版本从 APP_VERSION 动态填（之前写死 v1.0.25，升版漏改，用户刷新后还以为没更新）。
    + 版本检测——页面加载时用 cache-busting 读一次线上本页的 APP_VERSION，
@@ -330,15 +335,27 @@ function parseReasons(str) {
 /* 自动同步通道：Firebase Realtime Database（paidang-sync 项目，测试模式 30 天公开读写）。
    总包定时去拉各手机推上来的状态（paidang/acct{N}.json）。 */
 const SYNC_BASE = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/acct';
+const QUEUE_BASE = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/queue/acct';
+const SENT_URL = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json';
+const LOCK_URL = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/master_lock.json';
+const TAB_ID = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+const LOCK_TTL_MS = 18000;
+const LOCAL_LOCK_TTL_MS = 12000;
+const PRODUCTS_POLL_MS = 30000;
 let lastPullTime = 0;
 let lastPullOk = false;
 let bootReady = false; // v1.0.24 ready 门：第一次成功拉到各手机状态之前，不许把算好的队推到 Firebase。
-// 启动时本机 done/redo 可能还是旧的/空的，先算队就推会把“没做过”的错队发下去（2026-11-22 10:27 大洗牌的根因之一）。
-// 本地 localStorage 照常保存，只是不推云端；第一次拉取成功后放行。
 let bootState = 'loading'; // v1.0.25 启动状态机：'loading' | 'ready' | 'degraded'。
-// 只有 'ready' 才能算队/推队。'degraded' = 云端恢复失败（sent.json 或手机状态拉不到），只读、不算队、不推队，
-// 等网络恢复后自动重试变回 'ready'。GPT 重设计 P0。
 let sentLoadOk = false; // v1.0.25：sent.json 是否成功读到（哪怕是空账也算成功；网络失败算失败，不能当成“已恢复”）
+let queuesLoadOk = false; // v1.0.30：云端 8 个 queue 是否全部成功读取
+let isMasterWriter = false; // v1.0.30：当前标签页是否持有单写者锁
+let masterLockInfo = null;
+let lastPushedQueueSigs = {}; // v1.0.30：{ accountId: "1,2,3" } —— 仅队列变化时推送
+let lastProductsFetchAt = 0;
+let lastProductsSig = '';
+let _sentSyncTimer = null;
+let _sentSyncInFlight = false;
+let _sentSyncDirty = false;
 let shrinkConflicts = {}; // v1.0.24：{ accountId: { master, incoming, time } } —— 手机推来的状态比总包存量缩水一半以上，疑似分脑覆盖
 function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
 let mode = 'manual';
@@ -391,48 +408,100 @@ function byPid(pid) { return PRODUCTS.find(p => String(p.pid) === String(pid)); 
 function isHotPid(pid) { return PRODUCTS.some(p => String(p.pid) === String(pid) && p.hot); }
 // 退役套：products.json 里 retired:true 的套永不派单（用户不要了的旧套，如 FH310/FH320 旧 4 套）。
 function isRetired(p) { return !!(p && p.retired); }
-// ---- 发图记号（防重复总账，2026-11-22 03:20 用户铁规）----
-// 规则：① 同一套 set_no 永不发给同一号两次；② 同一 pid 24 小时内不发给同一号第二次。
-// 发过就记下来（localStorage + Firebase 双份），更新 products.json 时旧品靠这本账挡住，不会重发。
+// ---- 发图记号（防重复总账，v1.0.30 修复：数组强转兼容 + 解除一品两套跨号 24h 锁死 + 尾部防抖合写）----
 const SENT_24H = 24 * 60 * 60 * 1000;
 function sentGet(accountId) { return sentHistory[String(accountId)] || {}; }
 function sentWasSent(accountId, set_no) { return !!sentGet(accountId)[String(set_no)]; }
-function sentPidWithin24h(accountId, pid) {
+function sentOwnersOfSet(set_no) {
+  const k = String(set_no);
+  const owners = [];
+  ACCOUNTS.forEach(a => {
+    const h = sentHistory[String(a.id)];
+    if (h && h[k] && typeof h[k] === 'object') owners.push(a.id);
+  });
+  return owners;
+}
+function sentPidWithin24h(accountId, pid, excludeSetNo = null) {
   const now = Date.now();
   const h = sentGet(accountId);
   for (const k in h) {
+    if (excludeSetNo != null && String(k) === String(excludeSetNo)) continue;
     const e = h[k];
-    if (e && String(e.pid) === String(pid) && (now - (e.time || 0)) < SENT_24H) return true;
+    if (!e || String(e.pid) !== String(pid) || (now - (e.time || 0)) >= SENT_24H) continue;
+    const sn = parseInt(k, 10);
+    const sp = !isNaN(sn) ? bySetNo(sn) : null;
+    if (sp && isRetired(sp)) continue;
+    if (redoList.some(r => r.status === 'pending' && r.account !== accountId && String(r.pid) === String(pid) && String(r.set_no) === String(sn))) continue;
+    const dRec = doneMap[String(pid)];
+    if (dRec && dRec.sets && dRec.sets[String(sn)] != null && dRec.sets[String(sn)] !== accountId) continue;
+    return true;
   }
   return false;
 }
-// v1.0.24：跨号检查——同一套发给过任何一个号，就不许再进别的号的队；
-// 同一品 24 小时内发给过任何一个号，非爆品也不许再进别的号的队。
-// （旧版只查本号，同一套换个号就拦不住——2026-11-22 实测 5/58/75/126/127 先记 8 号、十几分钟后又记 5 号。）
-function sentWasSentAnywhere(set_no) {
-  const k = String(set_no);
-  for (const a in sentHistory) { if (sentHistory[a] && sentHistory[a][k]) return true; }
-  return false;
-}
-function sentPidWithin24hAnywhere(pid) {
-  const now = Date.now();
-  for (const a in sentHistory) {
-    const h = sentHistory[a] || {};
-    for (const k in h) {
-      const e = h[k];
-      if (e && String(e.pid) === String(pid) && (now - (e.time || 0)) < SENT_24H) return true;
+function normalizeSentH(rawH) {
+  const out = {};
+  const validAcctIds = new Set(ACCOUNTS.map(a => String(a.id)));
+  if (!rawH || typeof rawH !== 'object') return out;
+  const assignAcctBucket = (acctKey, rawBucket) => {
+    const aKey = String(acctKey);
+    if (!validAcctIds.has(aKey) || !rawBucket || typeof rawBucket !== 'object') return;
+    const dst = {};
+    if (Array.isArray(rawBucket)) {
+      rawBucket.forEach((entry, idx) => {
+        if (idx > 0 && entry && typeof entry === 'object' && entry.pid != null) {
+          dst[String(idx)] = entry;
+        }
+      });
+    } else {
+      Object.keys(rawBucket).forEach(snKey => {
+        const sn = parseInt(snKey, 10);
+        const entry = rawBucket[snKey];
+        if (!isNaN(sn) && sn > 0 && entry && typeof entry === 'object' && entry.pid != null) {
+          dst[String(sn)] = entry;
+        }
+      });
     }
+    if (Object.keys(dst).length) out[aKey] = dst;
+  };
+  if (Array.isArray(rawH)) {
+    rawH.forEach((bucket, idx) => {
+      if (idx > 0 && bucket) assignAcctBucket(String(idx), bucket);
+    });
+  } else {
+    Object.keys(rawH).forEach(aKey => assignAcctBucket(aKey, rawH[aKey]));
   }
-  return false;
+  return out;
 }
+function mergeSentHistoryInto(target, incomingNormalized) {
+  let changed = false;
+  Object.keys(incomingNormalized || {}).forEach(aKey => {
+    if (!target[aKey]) target[aKey] = {};
+    const srcBucket = incomingNormalized[aKey] || {};
+    Object.keys(srcBucket).forEach(snKey => {
+      const e = srcBucket[snKey];
+      const cur = target[aKey][snKey];
+      if (!cur || (e && (e.time || 0) > (cur.time || 0))) {
+        target[aKey][snKey] = e;
+        changed = true;
+      }
+    });
+  });
+  return changed;
+}
+sentHistory = normalizeSentH(sentHistory);
+
 function sentCanSend(accountId, p) {
   if (!p) return false;
   if (isRetired(p)) return false;
-  if (sentWasSent(accountId, p.set_no)) return false; // 同一套不发第二次
-  if (sentWasSentAnywhere(p.set_no)) return false; // v1.0.24：同一套发给过任何号都不再发
-  if (sentPidWithin24h(accountId, p.pid)) return false; // 同一品 24 小时内不发第二次
-  // v1.0.24：同一品 24 小时内发给过任何号，非爆品不许再进别的号（爆品 8 套分 8 号是例外）
-  if (!isHotPid(p.pid) && sentPidWithin24hAnywhere(p.pid)) return false;
+  if (hasAccountDonePid(accountId, p.pid)) return false; // 该号已做过这个 pid 的任一套，绝不再发同品
+  const owners = sentOwnersOfSet(p.set_no);
+  if (owners.some(id => id !== accountId)) return false; // 这套发过给别的号，绝不跨号重发
+  if (owners.includes(accountId)) {
+    // 历史上只归本号（如孤儿套恢复或本号点了“恢复已做完”）：允许回到本号，但 24h 内不能发过同 pid 其他套
+    return !sentPidWithin24h(accountId, p.pid, p.set_no);
+  }
+  // 全新套：只校验本号 24h 内没发过同 pid，跨号不拦（支持“一品两套分不同号”）
+  if (sentPidWithin24h(accountId, p.pid)) return false;
   return true;
 }
 function sentRecord(accountId, p) {
@@ -443,40 +512,189 @@ function sentRecord(accountId, p) {
     sentHistory[a][String(p.set_no)] = { pid: String(p.pid), style: p.style || '', time: Date.now() };
   }
 }
-function sentSave() { saveJSON(LS_SENT, sentHistory); sentSyncFirebase(); }
-let _sentSyncAt = 0;
-// v1.0.25：从 Firebase 恢复发图账（取本地与云端并集，时间取最新）。返回 Promise<boolean> 表示是否成功读到云端。
-// 网络失败返回 false（不能当成“已恢复”——GPT 重设计 P0）。
+function sentSave(immediate = false) {
+  saveJSON(LS_SENT, sentHistory);
+  sentSyncFirebase(immediate);
+}
 function restoreSentFromCloud() {
-  return fetch('https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json')
+  return fetch(SENT_URL, { headers: { 'Accept': 'application/json' } })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(d => {
       sentLoadOk = true;
       if (d && d.h) {
-        let changed = false;
-        Object.keys(d.h).forEach(a => {
-          if (!sentHistory[a]) sentHistory[a] = {};
-          Object.keys(d.h[a] || {}).forEach(n => {
-            const e = d.h[a][n];
-            const cur = sentHistory[a][n];
-            if (!cur || (e && (e.time || 0) > (cur.time || 0))) { sentHistory[a][n] = e; changed = true; }
-          });
-        });
-        if (changed) sentSave();
+        const normalized = normalizeSentH(d.h);
+        const changed = mergeSentHistoryInto(sentHistory, normalized);
+        if (changed) saveJSON(LS_SENT, sentHistory);
       }
       return true;
     })
     .catch(() => { sentLoadOk = false; return false; });
 }
-// v1.0.25：degraded 时尝试恢复 READY。sent 账读到了且最近一次拉手机状态成功了，就变 READY 并算队。
+function flushSentToFirebase() {
+  if (!bootReady || !isMasterWriter) return Promise.resolve(false);
+  if (_sentSyncInFlight) {
+    _sentSyncDirty = true;
+    return Promise.resolve(false);
+  }
+  _sentSyncInFlight = true;
+  _sentSyncDirty = false;
+  return fetch(SENT_URL, { headers: { 'Accept': 'application/json' } })
+    .then(r => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then(cloud => {
+      if (cloud && cloud.h) {
+        const normalized = normalizeSentH(cloud.h);
+        if (mergeSentHistoryInto(sentHistory, normalized)) {
+          saveJSON(LS_SENT, sentHistory);
+        }
+      }
+      return fetch(SENT_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ h: sentHistory, updated: Date.now(), writer: TAB_ID })
+      });
+    })
+    .then(r => !!(r && r.ok))
+    .catch(() => false)
+    .finally(() => {
+      _sentSyncInFlight = false;
+      if (_sentSyncDirty && bootReady && isMasterWriter) {
+        _sentSyncDirty = false;
+        sentSyncFirebase(false);
+      }
+    });
+}
+function sentSyncFirebase(immediate = false) {
+  if (!bootReady || !isMasterWriter) return;
+  if (_sentSyncTimer) {
+    clearTimeout(_sentSyncTimer);
+    _sentSyncTimer = null;
+  }
+  if (immediate) {
+    flushSentToFirebase();
+    return;
+  }
+  _sentSyncTimer = setTimeout(() => {
+    _sentSyncTimer = null;
+    flushSentToFirebase();
+  }, 5000);
+}
+function updateLockBanner() {
+  const el = document.getElementById('masterLockBanner');
+  const txt = document.getElementById('masterLockText');
+  if (!el || !txt) return;
+  if (!isMasterWriter && masterLockInfo && masterLockInfo.owner) {
+    el.style.display = 'flex';
+    const ts = masterLockInfo.updated ? fmtHM(masterLockInfo.updated) : '刚刚';
+    txt.textContent = '只读观察模式：另一台总包窗口正在管理派单（' + ts + ' 活跃）。为防双写冲突，本窗口暂不修改队。';
+  } else {
+    el.style.display = 'none';
+  }
+}
+function acquireOrCheckMasterLock(force = false) {
+  const now = Date.now();
+  if (!force) {
+    try {
+      const localLock = JSON.parse(localStorage.getItem(LS_LOCAL_LOCK) || 'null');
+      if (localLock && localLock.owner && localLock.owner !== TAB_ID && (now - (localLock.updated || 0)) < LOCAL_LOCK_TTL_MS) {
+        isMasterWriter = false;
+        masterLockInfo = localLock;
+        updateLockBanner();
+        return Promise.resolve(false);
+      }
+    } catch (e) {}
+  }
+  return fetch(LOCK_URL, { headers: { 'Accept': 'application/json' } })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(lock => {
+      const t = Date.now();
+      if (!force && lock && lock.owner && lock.owner !== TAB_ID && (t - (lock.updated || 0)) < LOCK_TTL_MS) {
+        isMasterWriter = false;
+        masterLockInfo = lock;
+        updateLockBanner();
+        return false;
+      }
+      const nextLock = { owner: TAB_ID, updated: t, version: APP_VERSION };
+      return fetch(LOCK_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(nextLock)
+      }).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        try { localStorage.setItem(LS_LOCAL_LOCK, JSON.stringify(nextLock)); } catch (e) {}
+        isMasterWriter = true;
+        masterLockInfo = null;
+        updateLockBanner();
+        return true;
+      });
+    })
+    .catch(() => {
+      isMasterWriter = false;
+      updateLockBanner();
+      return false;
+    });
+}
+function fetchProducts(force = false) {
+  const now = Date.now();
+  if (!force && lastProductsFetchAt && (now - lastProductsFetchAt) < PRODUCTS_POLL_MS) {
+    return Promise.resolve(false);
+  }
+  return fetch('products.json?_t=' + now, { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
+    .then(data => {
+      if (!Array.isArray(data) || !data.length) throw new Error('products.json 为空');
+      const sig = data.map(p => [p.set_no, p.pid, p.retired ? 1 : 0, p.urgent ? 1 : 0, p.hot ? 1 : 0].join(':')).join('|');
+      const changed = sig !== lastProductsSig;
+      PRODUCTS = data;
+      lastProductsFetchAt = Date.now();
+      if (changed) {
+        lastProductsSig = sig;
+        fillManualSelects();
+      }
+      return changed;
+    });
+}
+function restoreQueuesFromCloud() {
+  const jobs = ACCOUNTS.map(a =>
+    fetch(QUEUE_BASE + a.id + '.json', { headers: { 'Accept': 'application/json' } })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(data => ({ ok: true, id: a.id, data: data }))
+      .catch(() => ({ ok: false, id: a.id, data: null }))
+  );
+  return Promise.all(jobs).then(results => {
+    if (!results.every(x => x.ok)) {
+      queuesLoadOk = false;
+      return false;
+    }
+    queuesLoadOk = true;
+    const anyCloudObj = results.some(x => x.data && typeof x.data === 'object');
+    let hasUnknownSet = false;
+    if (anyCloudObj) {
+      results.forEach(x => {
+        const arr = (x.data && Array.isArray(x.data.q))
+          ? x.data.q.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n > 0)
+          : [];
+        autoQueues[String(x.id)] = arr;
+        saveJSON(autoQKey(x.id), arr);
+        lastPushedQueueSigs[String(x.id)] = arr.join(',');
+        if (arr.some(n => !bySetNo(n))) hasUnknownSet = true;
+      });
+    }
+    if (hasUnknownSet) {
+      return fetchProducts(true).then(() => true).catch(() => true);
+    }
+    return true;
+  });
+}
 function maybeBecomeReady() {
   if (bootState === 'ready') return Promise.resolve(true);
-  return restoreSentFromCloud().then(sentOk => {
-    if (sentOk && lastPullOk) {
+  return Promise.all([restoreSentFromCloud(), restoreQueuesFromCloud(), acquireOrCheckMasterLock(false)]).then(([sentOk, qOk]) => {
+    if (sentOk && qOk && lastPullOk) {
       bootState = 'ready';
       bootReady = true;
       updateBootBanner();
-      computeAutoQueues();
+      try { migrateOldDone(); } catch (e) {}
+      if (isMasterWriter) computeAutoQueues();
       render();
       return true;
     }
@@ -485,29 +703,15 @@ function maybeBecomeReady() {
     return false;
   });
 }
-// v1.0.25：启动状态横幅（只读提示）。没有对应元素时静默跳过。
 function updateBootBanner() {
   const el = document.getElementById('bootBanner');
   if (!el) return;
   if (bootState === 'degraded') {
     el.style.display = 'block';
-    el.textContent = '只读模式：云端状态还没恢复完成（发图账或手机状态拉不到），现在不算队、不推队，等网络恢复后自动恢复。不要在这时手动派单。';
+    el.textContent = '只读模式：云端状态还没恢复完成（发图账、队列或手机状态拉不到），现在不算队、不推队，等网络恢复后自动恢复。不要在这时手动派单。';
   } else {
     el.style.display = 'none';
   }
-}
-function sentSyncFirebase() {
-  // 发图记号同步到 Firebase（备份+跨浏览器共享），节流 30 秒一次
-  const now = Date.now();
-  if (now - _sentSyncAt < 30000) return;
-  _sentSyncAt = now;
-  try {
-    fetch('https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ h: sentHistory, updated: now })
-    }).catch(() => {});
-  } catch (e) {}
 }
 function fmtTime(ts) {
   const d = new Date(ts);
@@ -526,35 +730,109 @@ function redoEntry(pid, account) {
   return redoList.find(r => String(r.pid) === String(pid) && (!account || r.account === account));
 }
 
+function ensureDoneRec(pid) {
+  pid = String(pid);
+  let rec = doneMap[pid];
+  if (!rec || typeof rec !== 'object') {
+    rec = { account: null, time: Date.now(), sets: {}, legacyAccounts: {} };
+    doneMap[pid] = rec;
+  }
+  if (!rec.sets || typeof rec.sets !== 'object') {
+    rec.sets = {};
+    if (rec.set_no != null && rec.account != null) {
+      rec.sets[String(rec.set_no)] = rec.account;
+    }
+  }
+  if (!rec.legacyAccounts || typeof rec.legacyAccounts !== 'object') {
+    rec.legacyAccounts = {};
+    if (Object.keys(rec.sets).length === 0 && rec.account != null && rec.set_no == null) {
+      rec.legacyAccounts[String(rec.account)] = true;
+    }
+  }
+  return rec;
+}
+function hasAccountDonePid(accountId, pid) {
+  const rec = doneMap[String(pid)];
+  if (!rec) return false;
+  if (rec.sets && Object.values(rec.sets).some(a => a === accountId)) return true;
+  if (rec.legacyAccounts && rec.legacyAccounts[String(accountId)]) return true;
+  if ((!rec.sets || Object.keys(rec.sets).length === 0) && (!rec.legacyAccounts || Object.keys(rec.legacyAccounts).length === 0)) {
+    return rec.account === accountId;
+  }
+  return false;
+}
+function resolveLegacyDoneSetNo(accountId, pid, currentQueues) {
+  pid = String(pid);
+  const rec = doneMap[pid];
+  const mappedSets = (rec && rec.sets) ? rec.sets : {};
+  const qMap = currentQueues || autoQueues || {};
+  // 1. 先查本号当前自动队 + 人工派单里该 pid 的套
+  const ownList = (qMap[String(accountId)] || []).concat(assign[String(accountId)] || []);
+  const inOwn = ownList.find(n => {
+    const pp = bySetNo(n);
+    return pp && String(pp.pid) === pid && (mappedSets[String(n)] == null || mappedSets[String(n)] === accountId);
+  });
+  if (inOwn != null) return inOwn;
+  // 2. 再查 sentHistory[accountId] 里该 pid 未退役、且未被别的号占用的套（多个取最小套号）
+  const sentBucket = sentGet(accountId);
+  const sentCands = [];
+  Object.keys(sentBucket).forEach(snKey => {
+    const sn = parseInt(snKey, 10);
+    if (isNaN(sn)) return;
+    const pp = bySetNo(sn);
+    if (!pp || isRetired(pp) || String(pp.pid) !== pid) return;
+    if (mappedSets[String(sn)] != null && mappedSets[String(sn)] !== accountId) return;
+    const heldByOther = ACCOUNTS.some(a => a.id !== accountId && (((qMap[String(a.id)] || []).includes(sn)) || ((assign[String(a.id)] || []).includes(sn))));
+    if (!heldByOther) sentCands.push(sn);
+  });
+  if (sentCands.length) return Math.min.apply(null, sentCands);
+  // 3. 若该 pid 全部未退役套只有 1 套，直接唯一确定
+  const activeSets = PRODUCTS.filter(p => String(p.pid) === pid && !isRetired(p)).map(p => p.set_no);
+  if (activeSets.length === 1) {
+    const onlySn = activeSets[0];
+    if (mappedSets[String(onlySn)] == null || mappedSets[String(onlySn)] === accountId) return onlySn;
+  }
+  return null;
+}
+
 /* pid 当前状态（总包视角）：
    done / redo(待重做) / return(重做回流，在池子里，优先派回原账号) / assigned(已派给某账号) / pool(待派送) */
-// v1.0.27 迁移：把旧格式 doneMap（只记 pid、不记套号，来自 v1.0.25 之前的版本 / 老版手机只报 pid）
-// 转成按套记。推断方法：该品的套里，凡是不在任何队、不在人工派单、不待重做、还没按套记过的，
-// 剩下的就是做完的那套（通常只剩一套；剩多套时取最小套号——套是按顺序做的，最早的先做完）。
-// 找不到候选（全部套都已有去向）时不动，留作 pid 级标记。
-// 在启动时拉完手机状态后、第一次算队前跑一次；之后的新上报走 applyPhoneState 的推断。
 function migrateOldDone() {
   let n = 0;
-  const queued = new Set();
-  Object.keys(autoQueues).forEach(id => (autoQueues[id] || []).forEach(sn => queued.add(sn)));
-  Object.keys(assign).forEach(id => (assign[id] || []).forEach(sn => queued.add(sn)));
-  const redoSetNos = new Set(redoList.filter(r => r.status === 'pending').map(r => r.set_no));
   Object.keys(doneMap).forEach(pid => {
-    const rec = doneMap[pid];
-    if (!rec) return;
-    if (!rec.sets) {
-      rec.sets = {};
-      if (rec.set_no != null && rec.account != null) rec.sets[String(rec.set_no)] = rec.account;
+    const rec = ensureDoneRec(pid);
+    const acctsToResolve = [];
+    if (Object.keys(rec.sets).length === 0 && rec.account != null) {
+      acctsToResolve.push(rec.account);
     }
-    // 已有按套记录的跳过（v1.0.25 之后记的）
-    if (Object.keys(rec.sets).length > 0) return;
-    const sets = PRODUCTS.filter(p => String(p.pid) === String(pid) && !isRetired(p)).map(p => p.set_no);
-    const cand = sets.filter(sn => !queued.has(sn) && !redoSetNos.has(sn));
-    if (cand.length === 0) return;
-    const doneSetNo = Math.min.apply(null, cand);
-    rec.sets[String(doneSetNo)] = rec.account;
-    rec.set_no = doneSetNo;
-    n++;
+    Object.keys(rec.legacyAccounts || {}).forEach(aStr => {
+      const aid = parseInt(aStr, 10);
+      if (!isNaN(aid) && !acctsToResolve.includes(aid)) acctsToResolve.push(aid);
+    });
+    acctsToResolve.forEach(aid => {
+      if (Object.values(rec.sets).includes(aid)) {
+        delete rec.legacyAccounts[String(aid)];
+        return;
+      }
+      let resolved = resolveLegacyDoneSetNo(aid, pid, autoQueues);
+      if (resolved == null) {
+        const queued = new Set();
+        Object.keys(autoQueues).forEach(id => (autoQueues[id] || []).forEach(sn => queued.add(sn)));
+        Object.keys(assign).forEach(id => (assign[id] || []).forEach(sn => queued.add(sn)));
+        const redoSetNos = new Set(redoList.filter(r => r.status === 'pending').map(r => r.set_no));
+        const sets = PRODUCTS.filter(p => String(p.pid) === String(pid) && !isRetired(p)).map(p => p.set_no);
+        const cand = sets.filter(sn => !queued.has(sn) && !redoSetNos.has(sn) && rec.sets[String(sn)] == null);
+        if (cand.length > 0) resolved = Math.min.apply(null, cand);
+      }
+      if (resolved != null) {
+        rec.sets[String(resolved)] = aid;
+        rec.set_no = resolved;
+        delete rec.legacyAccounts[String(aid)];
+        n++;
+      } else {
+        rec.legacyAccounts[String(aid)] = true;
+      }
+    });
   });
   if (n > 0) saveJSON(LS_DONE, doneMap);
   return n;
@@ -562,7 +840,6 @@ function migrateOldDone() {
 
 function pidState(pid) {
   pid = String(pid);
-  // 2026-11-22 新规矩：一个 pid 的“已做完”指它全部未退役的套都做完了（按套记）。
   {
     const sets = PRODUCTS.filter(p => String(p.pid) === pid && !isRetired(p));
     if (sets.length && sets.every(p => isDone(p, null))) {
@@ -579,7 +856,6 @@ function pidState(pid) {
     if (arr.some(n => { const p = bySetNo(n); return p && String(p.pid) === pid; })) {
       return { state: 'assigned', account: a.id };
     }
-    // 自动队的队也算“已派”：同一 pid 不能再派给别的号（跨模式也防重复）
     const q = autoQueues[String(a.id)] || [];
     if (q.some(n => { const p = bySetNo(n); return p && String(p.pid) === pid; })) {
       return { state: 'assigned', account: a.id };
@@ -588,53 +864,50 @@ function pidState(pid) {
   return { state: 'pool', account: null };
 }
 /* 这套能不能派给 accountId？返回 {ok, why} */
-function canDispatch(p, accountId) {
-  // v1.0.25：先按任务身份查这套（爆品按 set_no——一个号做完一套，不连累同 pid 其他套；GPT 重设计 §1.5）。
+function canDispatch(p, accountId, allowSelfAssign = false) {
   if (isDone(p, accountId)) return { ok: false, why: '已做完' };
   if (isPendRedo(p, accountId)) return { ok: false, why: '待重做' };
   const pid = String(p.pid);
-  // 爆品：pidState 的 done/redo/assigned 是 pid 级的，对爆品不适用（8 套分 8 号）。
-  // 这套本身没做完、没待重做，就按“这套在不在某号”判 assigned；其余按发图账判。
   if (isHotPid(pid)) {
     const r = redoList.find(x => String(x.pid) === pid && x.status === 'returned');
     if (r) {
-      const newest = Math.max.apply(null, PRODUCTS.filter(x => String(x.pid) === pid).map(x => x.set_no));
-      if (p.set_no === newest) {
+      const activeSets = PRODUCTS.filter(x => String(x.pid) === pid && !isRetired(x)).map(x => x.set_no);
+      const newest = activeSets.length ? Math.max.apply(null, activeSets) : null;
+      if (newest != null && p.set_no === newest) {
         if (r.account !== accountId) return { ok: false, why: '重做回流，只派回' + acctName(r.account) };
-        if (!sentCanSendRedo(accountId, p)) return { ok: false, why: '发图账：这套已发过' };
+        if (!sentCanSendRedo(accountId, p)) return { ok: false, why: '发图账：这套已发给别的号' };
         return { ok: true };
       }
     }
     for (const a of ACCOUNTS) {
       const arr = assign[String(a.id)] || [];
       const q = autoQueues[String(a.id)] || [];
-      if (arr.includes(p.set_no) || q.includes(p.set_no)) return { ok: false, why: '这套已派给' + acctName(a.id) };
+      if (!(allowSelfAssign && a.id === accountId) && arr.includes(p.set_no)) {
+        return { ok: false, why: '这套已派给' + acctName(a.id) };
+      }
+      if (q.includes(p.set_no)) return { ok: false, why: '这套已派给' + acctName(a.id) };
     }
-    if (!sentCanSend(accountId, p)) return { ok: false, why: '发图账：这套或这品 24 小时内已发过（换号也不行）' };
+    if (!sentCanSend(accountId, p)) return { ok: false, why: '发图账：这套已发过给别的号，或本号 24h 内发过该品' };
     return { ok: true };
   }
-  // 非爆品（2026-11-22 新规矩：一品两套分不同号，按套判）：
-  //   这套已做完/待重做 → 不行；重做回流只派回原号；
-  //   这套已派给任何号 → 不行；这号已有同品另一套 → 不行；其余过发图账。
-  if (isDone(p, accountId)) return { ok: false, why: '已做完' };
-  if (isPendRedo(p, accountId)) return { ok: false, why: '待重做' };
   const rr = redoList.find(x => String(x.pid) === pid && x.status === 'returned');
   if (rr) {
-    const newest = Math.max.apply(null, PRODUCTS.filter(x => String(x.pid) === pid).map(x => x.set_no));
-    if (p.set_no === newest) {
+    const activeSets = PRODUCTS.filter(x => String(x.pid) === pid && !isRetired(x)).map(x => x.set_no);
+    const newest = activeSets.length ? Math.max.apply(null, activeSets) : null;
+    if (newest != null && p.set_no === newest) {
       if (rr.account !== accountId) return { ok: false, why: '重做回流，只派回' + acctName(rr.account) };
-      if (!sentCanSendRedo(accountId, p)) return { ok: false, why: '发图账：这套已发过' };
+      if (!sentCanSendRedo(accountId, p)) return { ok: false, why: '发图账：这套已发给别的号' };
       return { ok: true };
     }
-    // 不是最新版（旧版已被重做取代），按正常流程走（多半会被已退役/已派拦住）
   }
-  // 这套本身已派给某号（自动队或人工）→ 不行
   for (const a of ACCOUNTS) {
     const arr = assign[String(a.id)] || [];
     const q = autoQueues[String(a.id)] || [];
-    if (arr.includes(p.set_no) || q.includes(p.set_no)) return { ok: false, why: '这套已派给' + acctName(a.id) };
+    if (!(allowSelfAssign && a.id === accountId) && arr.includes(p.set_no)) {
+      return { ok: false, why: '这套已派给' + acctName(a.id) };
+    }
+    if (q.includes(p.set_no)) return { ok: false, why: '这套已派给' + acctName(a.id) };
   }
-  // 这号已有同品另一套 → 不行（一品两套分不同号）
   {
     const arr = assign[String(accountId)] || [];
     const q = autoQueues[String(accountId)] || [];
@@ -645,31 +918,58 @@ function canDispatch(p, accountId) {
     });
     if (hasOther) return { ok: false, why: '这号已有同品另一套（一品两套分不同号）' };
   }
-  if (!sentCanSend(accountId, p)) return { ok: false, why: '发图账：这套或这品 24 小时内已发过（换号也不行）' };
+  if (!sentCanSend(accountId, p)) return { ok: false, why: '发图账：这套已发过给别的号，或本号 24h 内发过该品' };
   return { ok: true };
 }
-// v1.0.25：任务身份（GPT 重设计 §1.5 / §5）。非爆品以 pid 为任务身份；爆品以 set_no 为独立任务身份。
-// 旧版 doneMap/pendRedo 全按 pid 记：爆品一个号做完一套，全 pid 8 套都会被判已做完、从各队清掉。
-// isDone(p, accountId)：这套（这个号）是不是已做完。爆品只认“这个号完成了这套”（set_no + 账号都对上）。
-// accountId 传 null 表示“任何号”（Step 3 选候选时用：这套被任何号做完了就不再是候选）。
 function isDone(p, accountId) {
   const rec = doneMap[String(p.pid)];
   if (!rec) return false;
-  // 2026-11-22 新规矩：按套判（一品两套分不同号，一套做完不连累另一套）。
-  // doneMap[pid].sets: { set_no: account }；老数据只有 set_no 时按那一套算。
   let doneAcct = null;
-  if (rec.sets) doneAcct = rec.sets[String(p.set_no)];
-  else if (rec.set_no != null && String(rec.set_no) === String(p.set_no)) doneAcct = rec.account;
-  if (doneAcct == null) return false;
-  return accountId == null ? true : doneAcct === accountId;
+  if (rec.sets && rec.sets[String(p.set_no)] != null) {
+    doneAcct = rec.sets[String(p.set_no)];
+  } else if (rec.set_no != null && String(rec.set_no) === String(p.set_no)) {
+    doneAcct = rec.account;
+  }
+  if (doneAcct != null) {
+    return accountId == null ? true : doneAcct === accountId;
+  }
+  if (accountId != null) {
+    return hasAccountDonePid(accountId, p.pid);
+  }
+  // accountId == null：检查该 pid 历史未映射的 legacyAccounts 加上精确 sets 是否已经覆满所有未退役套
+  const activeSets = PRODUCTS.filter(x => String(x.pid) === String(p.pid) && !isRetired(x));
+  if (!activeSets.length) return false;
+  const activeSetKeys = new Set(activeSets.map(x => String(x.set_no)));
+  const mappedActiveAccts = new Set();
+  let mappedActiveCount = 0;
+  if (rec.sets) {
+    Object.keys(rec.sets).forEach(snKey => {
+      if (activeSetKeys.has(snKey) && rec.sets[snKey] != null) {
+        mappedActiveCount++;
+        mappedActiveAccts.add(rec.sets[snKey]);
+      }
+    });
+  }
+  let unmappedLegacyCount = 0;
+  if (rec.legacyAccounts) {
+    Object.keys(rec.legacyAccounts).forEach(aStr => {
+      const aid = parseInt(aStr, 10);
+      if (rec.legacyAccounts[aStr] && !isNaN(aid) && !mappedActiveAccts.has(aid)) {
+        unmappedLegacyCount++;
+      }
+    });
+  } else if ((!rec.sets || Object.keys(rec.sets).length === 0) && rec.account != null) {
+    unmappedLegacyCount = 1;
+  }
+  return (mappedActiveCount + unmappedLegacyCount) >= activeSets.length;
 }
-// isPendRedo(p, accountId)：这套（这个号）是不是待重做。爆品只认这套的待重做。
 function isPendRedo(p, accountId) {
-  const r = redoList.find(x => String(x.pid) === String(p.pid) && x.status === 'pending');
+  const r = redoList.find(x => String(x.pid) === String(p.pid) && x.status === 'pending' && String(x.set_no) === String(p.set_no));
   if (!r) return false;
-  // 2026-11-22 新规矩：按套判（待重做的是某一套，不是整个品）。
-  if (String(r.set_no) !== String(p.set_no)) return false;
   return accountId == null ? true : r.account === accountId;
+}
+function hasAccountPendingRedoPid(accountId, pid) {
+  return redoList.some(x => x.status === 'pending' && x.account === accountId && String(x.pid) === String(pid));
 }
 function accountTotal(accountId) {
   return (assign[String(accountId)] || []).length;
@@ -684,26 +984,30 @@ function loadAutoQueues() {
   ACCOUNTS.forEach(a => { map[String(a.id)] = loadJSON(autoQKey(a.id), []); });
   return map;
 }
-function saveAutoQueues(map) {
+function saveAutoQueues(map, forcePush = false) {
   ACCOUNTS.forEach(a => {
     const arr = Array.isArray(map[String(a.id)]) ? map[String(a.id)] : [];
     autoQueues[String(a.id)] = arr;
     saveJSON(autoQKey(a.id), arr);
   });
-  // v1.0.24 ready 门：第一次成功拉到手机状态前不推云端队（本地照常存）
-  if (bootReady) pushQueuesToFirebase(map);
+  // v1.0.30：只有 ready 且持有单写者锁时才推送云端队
+  if (bootReady && isMasterWriter) pushQueuesToFirebase(map, forcePush);
 }
-/* 总包把各号的队也推到 Firebase，手机点“拉下一组”时直接从这里拿最新队，不用等总包发新链接 */
-function pushQueuesToFirebase(map) {
-  if (!map) return;
-  const QB = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/queue/acct';
+/* 总包把各号的队推到 Firebase，仅队列变化时 PUT */
+function pushQueuesToFirebase(map, forceAll = false) {
+  if (!map || !bootReady || !isMasterWriter) return;
   ACCOUNTS.forEach(a => {
-    const arr = Array.isArray(map[String(a.id)]) ? map[String(a.id)] : [];
-    fetch(QB + a.id + '.json', {
+    const k = String(a.id);
+    const arr = Array.isArray(map[k]) ? map[k] : [];
+    const sig = arr.join(',');
+    if (!forceAll && lastPushedQueueSigs[k] === sig) return;
+    fetch(QUEUE_BASE + a.id + '.json', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: arr, updated: Date.now() })
-    }).catch(() => {});
+      body: JSON.stringify({ q: arr, updated: Date.now(), writer: TAB_ID })
+    })
+      .then(r => { if (r.ok) lastPushedQueueSigs[k] = sig; })
+      .catch(() => {});
   });
 }
 function manualAssignedPids() {
@@ -716,150 +1020,172 @@ function manualAssignedPids() {
   });
   return s;
 }
-/* 重做回流不走 24 小时规则（2026-11-22 v1.0.23）：重做是替换被打回的版本，不是重复发同一品，
-   原账号 24 小时内发过同一品也不拦；只拦“同一套发过两次”和“已退役”。 */
+/* 重做回流不走 24 小时规则：只要这套没发给别的号且未退役，就允许回流到原账号。 */
 function sentCanSendRedo(accountId, p) {
   if (!p) return false;
   if (isRetired(p)) return false;
-  if (sentWasSent(accountId, p.set_no)) return false; // 同一套不发第二次
-  if (sentWasSentAnywhere(p.set_no)) return false; // v1.0.24：同一套发给过任何号都不再发
+  const owners = sentOwnersOfSet(p.set_no);
+  if (owners.some(id => id !== accountId)) return false;
   return true;
 }
-/* 重做自动回流（2026-11-22 v1.0.23：不用再手动点“重做完成”）。
-   待重做的 pid，若池子里已有比原套号更大的套（重做新版已入池并验证过），且新版真的能派回原账号
-   （不在别的号队里、这套没发过），自动把该条标成 returned，下次算队就派回原账号。
-   池子里没有新版时继续等，不动。 */
-function autoReturnRedos() {
+/* 查找某条重做记录对应的最新有效替换套（过滤已退役/已完成/待重做/已被抢占的套） */
+function findRedoReplacement(r, claimedSetNos) {
+  if (!r) return null;
+  const oldSet = parseInt(r.set_no, 10) || 0;
+  const cands = PRODUCTS.filter(p => {
+    if (String(p.pid) !== String(r.pid) || isRetired(p)) return false;
+    if (p.set_no <= oldSet) return false;
+    if (isDone(p, null) || isPendRedo(p, null)) return false;
+    if (claimedSetNos && claimedSetNos.has(p.set_no)) return false;
+    return true;
+  }).sort((a, b) => b.set_no - a.set_no);
+  return cands.length ? cands[0].set_no : null;
+}
+/* 重做自动回流（v1.0.30 修复：基于实时 queues 传入，不再因别号持有同 pid 另一套而拦截） */
+function autoReturnRedos(queues) {
   let changed = false;
-  redoList.forEach(r => {
-    if (r.status !== 'pending') return;
-    const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid) && !isRetired(p)).map(p => p.set_no);
-    if (!sets.length) return;
-    const newest = Math.max.apply(null, sets);
-    if (newest <= (parseInt(r.set_no, 10) || 0)) return;
+  const qMap = queues || autoQueues || {};
+  const claimed = new Set();
+  redoList.filter(r => r.status === 'returned').forEach(r => {
+    const rep = r.replacement_set_no || findRedoReplacement(r, claimed);
+    if (rep != null) claimed.add(rep);
+  });
+  const pendings = redoList.filter(r => r.status === 'pending').sort((a, b) => (a.time || 0) - (b.time || 0));
+  pendings.forEach(r => {
+    const newest = findRedoReplacement(r, claimed);
+    if (newest == null) return;
     const p = bySetNo(newest);
     if (!p) return;
     for (const a of ACCOUNTS) {
       if (a.id === r.account) continue;
-      if ((autoQueues[String(a.id)] || []).some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === String(r.pid); })) return;
+      if ((qMap[String(a.id)] || []).includes(newest)) return;
     }
-    if (!sentCanSendRedo(r.account, p)) return;
+    const alreadyInOwnQ = (qMap[String(r.account)] || []).includes(newest);
+    if (!alreadyInOwnQ && !sentCanSendRedo(r.account, p)) return;
     r.status = 'returned';
+    r.replacement_set_no = newest;
     r.returnedTime = Date.now();
+    claimed.add(newest);
     changed = true;
   });
   if (changed) saveJSON(LS_REDO, redoList);
 }
+function pickBestTargetAccount(p, excludeAcctId, queues) {
+  const pid = String(p.pid);
+  let best = null;
+  let bestLen = Infinity;
+  ACCOUNTS.forEach(a => {
+    if (excludeAcctId != null && a.id === excludeAcctId) return;
+    const q = queues[String(a.id)] || [];
+    const hasPidInQ = q.some(m => { const pp = bySetNo(m); return pp && String(pp.pid) === pid; });
+    if (hasPidInQ) return;
+    if (hasAccountDonePid(a.id, pid)) return;
+    if (hasAccountPendingRedoPid(a.id, pid)) return;
+    if (!sentCanSend(a.id, p)) return;
+    if (q.length < bestLen) { bestLen = q.length; best = a; }
+  });
+  return best;
+}
 function computeAutoQueues() {
-  // v1.0.25 READY 门：没恢复完成不算队、不推队、不记账，只返回本地缓存的队（页面照常显示）。
-  // （旧版 setMode 里直接算队，手机状态还没回来就用本地旧状态算队并推云端。）
-  if (bootState !== 'ready') return loadAutoQueues();
-  autoReturnRedos(); // 重做自动回流：有新版就自动标 returned，不用手动点
+  if (bootState !== 'ready' || !isMasterWriter) return loadAutoQueues();
   const queues = loadAutoQueues();
+  autoReturnRedos(queues);
   const manualPids = manualAssignedPids();
-  // v1.0.25：done/pendRedo 不再用 pid 级 Set（爆品按 set_no 判，见 isDone/isPendRedo）。
-  // 1. 清理各队：去掉 pid 已做完 / 待重做 / 被人工派单占用的套；去掉不在产品库里的套；去掉已退役的套
+  // 1. 清理各队：去掉已做完 / 待重做 / 被人工派单占用 / 不在库 / 已退役的套
   ACCOUNTS.forEach(a => {
     queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
       const p = bySetNo(n);
       if (!p) return false;
-      if (isRetired(p)) return false; // 退役套永不留队
+      if (isRetired(p)) return false;
       const pid = String(p.pid);
-      // v1.0.25：用任务身份判（爆品按 set_no，不按 pid——一个号做完一套不连累同 pid 其他套）
-      if (isDone(p, a.id) || isPendRedo(p, a.id) || manualPids.has(pid)) return false;
+      if (isDone(p, a.id)) return false;
+      const rec = doneMap[pid];
+      if (rec && rec.sets && rec.sets[String(n)] != null) return false;
+      if (isPendRedo(p, a.id) || manualPids.has(pid)) return false;
       return true;
     });
   });
-  // 2. 重做回流：该号 returned 的套移到队首（队里只剩未消费的套，队首就是未消费部分的队首）
-  //    注意（2026-11-22 02:50 修）：r.set_no 是原套号（旧版）；重做后新套号更大，要派新套不能派旧套。
-  //    所以按 pid 找该 pid 的最大 set_no（最新版）派最新版；若最新版就是原套号则派原套号。
-  //    否则重做完的套永远派不回原账号（旧套已退役、新套按第 3 步会流到最短队、未必是原账号）。
+  // 2. 重做回流：将每个账号 returned 的最新替换套插到本号队首，并收集全局 returnedReplacementSets
+  const returnedReplacementSets = new Set();
+  const claimedRetSets = new Set();
   ACCOUNTS.forEach(a => {
     const q = queues[String(a.id)];
-    const retSets = redoList
+    const retSets = [];
+    redoList
       .filter(r => r.status === 'returned' && r.account === a.id)
-      .map(r => {
-        const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid)).map(p => p.set_no);
-        return sets.length ? Math.max.apply(null, sets) : r.set_no;
-      })
-      .filter(n => bySetNo(n));
+      .sort((x, y) => (x.time || 0) - (y.time || 0))
+      .forEach(r => {
+        let rep = null;
+        if (r.replacement_set_no && !claimedRetSets.has(r.replacement_set_no)) {
+          const rp = bySetNo(r.replacement_set_no);
+          if (rp && !isRetired(rp) && !isDone(rp, null) && !isPendRedo(rp, null)) rep = r.replacement_set_no;
+        }
+        if (rep == null) rep = findRedoReplacement(r, claimedRetSets);
+        if (rep == null) {
+          const origP = bySetNo(r.set_no);
+          if (origP && !isRetired(origP) && !isDone(origP, null) && !isPendRedo(origP, null) && !claimedRetSets.has(r.set_no)) {
+            rep = r.set_no;
+          }
+        }
+        if (rep != null) {
+          r.replacement_set_no = rep;
+          claimedRetSets.add(rep);
+          returnedReplacementSets.add(rep);
+          retSets.push(rep);
+        }
+      });
     if (!retSets.length) return;
+    // 确保其他号队里没有这些替换套
+    ACCOUNTS.forEach(b => {
+      if (b.id === a.id) return;
+      queues[String(b.id)] = (queues[String(b.id)] || []).filter(n => !retSets.includes(n));
+    });
     const rest = q.filter(n => !retSets.includes(n));
     const toInsert = retSets.filter(n => {
       const p = bySetNo(n);
-      if (!p) return false;
-      if (isRetired(p)) return false;
+      if (!p || isRetired(p)) return false;
       const pid = String(p.pid);
-      // v1.0.25：用任务身份判（爆品按 set_no）
       if (isDone(p, a.id) || isPendRedo(p, a.id) || manualPids.has(pid)) return false;
-      // 已在本号队里：移到队首（不拦——发图记号是进队时记的，重算时它已在账上，不能因此把它踢掉，否则新版每次重算都滑到队尾，v1.0.23 测试抓到）
       if (q.includes(n)) return true;
-      if (!sentCanSendRedo(a.id, p)) return false; // 重做回流不走 24 小时规则（v1.0.23）：只拦同一套发过两次 / 已退役
-      // 2026-11-22 新规矩（一品两套分不同号）：别的号队里有同 pid 的另一套是正常的，不拦重做回流。
-      // 重做回流必须回原号；若因此原号出现一品两套，由 Step 2.6 把另一套（非重做）移走解决。
+      if (!sentCanSendRedo(a.id, p)) return false;
       return true;
     });
     queues[String(a.id)] = toInsert.concat(rest);
   });
-  // 2.5 加急优先（2026-11-22 02:41 重写：加急只派一个号，绝不广播到 8 个号）。
-  //    旧版把加急套 unshift 到每个号队首，导致同一套出现在 8 台手机上——用户 2026-11-22 02:41
-  //    明确指出这是重复派送，要求彻底消灭。现改为：加急套只进一个号，插到该号队首；
-  //    定号规则：优先留在当前已持有该加急套的号（取 id 最小者，保证稳定不跳号），
-  //    若无任何号持有则分给队最短的号。同时把该 pid 的其它非加急套从各队里清掉
-  //    （只留加急那套，避免旧套先被做掉、把 pid 标成已做完导致加急套死掉；重做回流的套除外）。
-  const retRedoSetNos = new Set(redoList.filter(r => r.status === 'returned').map(r => r.set_no));
+  // 2.5 加急优先：只派一个号、插队首，兼容同 pid 多套与重做回流
+  const retRedoSetNos = returnedReplacementSets;
   PRODUCTS.filter(p => p.urgent && bySetNo(p.set_no)).sort((a, b) => b.set_no - a.set_no).forEach(p => {
     const pid = String(p.pid);
-    if (isRetired(p)) return; // 退役的加急套不派
-    // v1.0.25：用任务身份判（爆品按 set_no）
+    if (isRetired(p)) return;
     if (isDone(p, null) || isPendRedo(p, null) || manualPids.has(pid)) return;
-    // 定号（先定号，后清理，保证稳定不跳号）
+    const validForHome = (acctId) => {
+      if (hasAccountDonePid(acctId, pid) || hasAccountPendingRedoPid(acctId, pid)) return false;
+      const holdersOther = (queues[String(acctId)] || []).includes(p.set_no);
+      if (holdersOther) return !sentOwnersOfSet(p.set_no).some(id => id !== acctId);
+      return sentCanSend(acctId, p);
+    };
     let home = null;
-    const holders = ACCOUNTS.filter(a => (queues[String(a.id)] || []).includes(p.set_no));
+    const holders = ACCOUNTS.filter(a => (queues[String(a.id)] || []).includes(p.set_no) && validForHome(a.id));
     if (holders.length) {
-      home = holders[0]; // ACCOUNTS 按 id 升序，第一个即 id 最小
+      home = holders[0];
     } else {
-      ACCOUNTS.forEach(a => {
-        const q = queues[String(a.id)] || [];
-        if (!home && q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; })) home = a;
-      });
-    }
-    if (!home) {
-      let bestLen = Infinity;
-      ACCOUNTS.forEach(a => {
-        const q = queues[String(a.id)] || [];
-        if (q.length < bestLen) { bestLen = q.length; home = a; }
-      });
+      home = pickBestTargetAccount(p, null, queues);
     }
     if (!home) return;
-    if (!sentCanSend(home.id, p)) return; // 发图记号：这套/这品 24 小时内发过就不插
-    // 从所有号清掉该加急套（去重），再只插回 home 号的队首
     ACCOUNTS.forEach(a => {
       queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => n !== p.set_no);
     });
-    // 该 pid 的其它非加急套也从各队清掉（重做回流除外）
-    ACCOUNTS.forEach(a => {
-      queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
-        const pp = bySetNo(n);
-        if (!pp || String(pp.pid) !== pid) return true;
-        if (pp.urgent) return true;
-        if (retRedoSetNos.has(n)) return true;
-        return false;
-      });
+    queues[String(home.id)] = (queues[String(home.id)] || []).filter(n => {
+      const pp = bySetNo(n);
+      if (!pp || String(pp.pid) !== pid) return true;
+      if (pp.urgent || retRedoSetNos.has(n)) return true;
+      return false;
     });
     queues[String(home.id)].unshift(p.set_no);
   });
-  // 2.6 一品分号（2026-11-22 用户新规矩：一品两套分不同号，取代旧的同品归一）。
-  //    若同一个 pid 的多套挤在同一个号的队里，只留一套在该号（优先留重做回流的套，其次留 set_no 最小的），
-  //    其余套移到没有该 pid 的号（队最短的优先）。重做回流的套本身不移走（必须回原号）。
-  //    爆品（hot）本来就一号一套，不用处理。
+  // 2.6 一品分号：同号队内若出现同 pid 多套，只留一套（重做回流优先），其余移到无该 pid 且合规则的最短队；无合法目标则移出
   {
-    // 重做回流的套号（按 pid 取最大 set_no，与 Step 2 同口径）——这些套不移走
-    const retSetNos = new Set();
-    redoList.filter(r => r.status === 'returned').forEach(r => {
-      const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid)).map(p => p.set_no);
-      if (sets.length) retSetNos.add(Math.max.apply(null, sets));
-    });
+    const retSetNos = returnedReplacementSets;
     const pidGroups = {};
     ACCOUNTS.forEach(a => {
       (queues[String(a.id)] || []).forEach(n => {
@@ -869,7 +1195,6 @@ function computeAutoQueues() {
       });
     });
     Object.keys(pidGroups).forEach(pid => {
-      if (isHotPid(pid)) return; // 爆品本来就分号
       const byAcct = {};
       pidGroups[pid].forEach(x => { (byAcct[x.a] = byAcct[x.a] || []).push(x.n); });
       Object.keys(byAcct).forEach(aid => {
@@ -884,42 +1209,22 @@ function computeAutoQueues() {
         if (!move.length) return;
         queues[String(aid)] = (queues[String(aid)] || []).filter(n => !move.includes(n));
         move.forEach(n => {
-          let best = null, bestLen = Infinity;
-          ACCOUNTS.forEach(a => {
-            if (String(a.id) === String(aid)) return;
-            const q = queues[String(a.id)] || [];
-            const hasPid = q.some(m => { const pp = bySetNo(m); return pp && String(pp.pid) === pid; });
-            if (!hasPid && q.length < bestLen) { bestLen = q.length; best = a; }
-          });
-          if (!best) {
-            ACCOUNTS.forEach(a => {
-              if (String(a.id) === String(aid)) return;
-              const q = queues[String(a.id)] || [];
-              if (q.length < bestLen) { bestLen = q.length; best = a; }
-            });
-          }
+          const pp = bySetNo(n);
+          if (!pp) return;
+          const best = pickBestTargetAccount(pp, parseInt(aid, 10), queues);
           if (best) (queues[String(best.id)] = queues[String(best.id)] || []).push(n);
-          else (queues[String(aid)] = queues[String(aid)] || []).push(n); // 没地方去，放回原号
         });
       });
     });
   }
-  // 3. 新套增量追加：符合条件的套按 set_no 从大到小，只往队尾追加。
-  //    2026-11-22 新规矩（一品两套分不同号）：一个 pid 的新套派给还没有该 pid 的号（队最短的优先）；
-  //    所有号都有该 pid 时才放最短队。重做回流的套归第 2 步管，第 3 步不碰（避免把应回原号的重做套派给别的号）。
-  //    2026-11-22 02:55 爆品例外：爆品 8 套分到 8 个号——新套派给还没有该 pid 的号（最短队优先）；
-  //    且爆品不受“加急 pid 非加急套不派”限制（爆品新套本身就是非加急的）。
-  const retRedoSets = new Set(redoList.filter(r => r.status === 'returned').map(r => r.set_no));
-  const urgentPids = new Set(PRODUCTS.filter(p => p.urgent).map(p => String(p.pid)));
+  // 3. 新套增量追加：按 set_no 从大到小往最短合法队尾追加（彻底取消同号硬塞 fallback）
+  const retRedoSets = returnedReplacementSets;
   const candidates = PRODUCTS
     .filter(p => {
       const pid = String(p.pid);
-      if (isRetired(p)) return false; // 退役套不派
-      // v1.0.25：用任务身份判（爆品按 set_no，任何号做完了这套就不再是候选）
+      if (isRetired(p)) return false;
       if (isDone(p, null) || isPendRedo(p, null) || manualPids.has(pid)) return false;
       if (retRedoSets.has(p.set_no)) return false;
-      // 加急 pid 的非加急套不派（2.5 已把旧套清掉，这里不再补回来，否则旧套会先被做掉）——爆品除外
-      if (urgentPids.has(pid) && !p.urgent && !isHotPid(pid)) return false;
       for (const a of ACCOUNTS) {
         if ((queues[String(a.id)] || []).includes(p.set_no)) return false;
       }
@@ -927,51 +1232,14 @@ function computeAutoQueues() {
     })
     .sort((x, y) => y.set_no - x.set_no);
   candidates.forEach(p => {
-    const pid = String(p.pid);
-    if (isHotPid(pid)) {
-      // 爆品：派给还没有该 pid 的号（队最短的优先）；8 个号都有了才放最短队
-      // 发图记号：跳过已发过这套、或 24 小时内已发过这品的号
-      let best = null, bestLen = Infinity;
-      ACCOUNTS.forEach(a => {
-        const q = queues[String(a.id)] || [];
-        const hasPid = q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; });
-        if (!hasPid && sentCanSend(a.id, p) && q.length < bestLen) { bestLen = q.length; best = a; }
-      });
-      if (!best) {
-        ACCOUNTS.forEach(a => {
-          const q = queues[String(a.id)] || [];
-          if (sentCanSend(a.id, p) && q.length < bestLen) { bestLen = q.length; best = a; }
-        });
-      }
-      if (!best) return;
-      queues[String(best.id)].push(p.set_no);
-      return;
-    }
-    // 2026-11-22 新规矩（一品两套分不同号）：新套派给还没有该 pid 的号（队最短的优先）；
-    // 所有号都有该 pid 时才放最短队。发图记号照常查（24 小时内发过这品的号跳过）。
-    let best = null, bestLen = Infinity;
-    ACCOUNTS.forEach(a => {
-      const q = queues[String(a.id)] || [];
-      const hasPid = q.some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; });
-      if (!hasPid && sentCanSend(a.id, p) && q.length < bestLen) { bestLen = q.length; best = a; }
-    });
-    if (!best) {
-      ACCOUNTS.forEach(a => {
-        const q = queues[String(a.id)] || [];
-        if (sentCanSend(a.id, p) && q.length < bestLen) { bestLen = q.length; best = a; }
-      });
-    }
+    const best = pickBestTargetAccount(p, null, queues);
     if (!best) return;
     queues[String(best.id)].push(p.set_no);
   });
-  // 4. 最终去重校验（2026-11-22 02:41 新增：兜底防线，绝不允许任何重复出队）。
-  //    校验两条铁规：① 同一套 set_no 只出现在一号队里；② 同一号队里绝不能有同一 pid 的两套（一品两套分不同号）。
-  //    若发现违规，自动修正（② 把多余的套移到没有该 pid 的号，优先留重做回流的套），并记入 lastDedupReport 在页面上公示。
-  //    这一步每次排队都跑（每 5 秒同步一次），所以即使前面某步出 bug，重复也绝不会被推给手机。
-  //    2026-11-22 新规矩：旧版第 ② 条“同一 pid 只出现在一号队里”（同品归一）已作废。
+  // 4. 最终去重校验：① 同一 set_no 只在一号队里；② 同一号队里绝无同 pid 多套
   let dedupFixed = 0;
   {
-    const seenSet = new Map(); // set_no -> accountId
+    const seenSet = new Map();
     ACCOUNTS.forEach(a => {
       queues[String(a.id)] = (queues[String(a.id)] || []).filter(n => {
         if (seenSet.has(n)) { dedupFixed++; return false; }
@@ -979,12 +1247,7 @@ function computeAutoQueues() {
         return true;
       });
     });
-    // 重做回流的套号（按 pid 取最大 set_no，与 Step 2 同口径）——这些套不移走
-    const retSetNos = new Set();
-    redoList.filter(r => r.status === 'returned').forEach(r => {
-      const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid)).map(p => p.set_no);
-      if (sets.length) retSetNos.add(Math.max.apply(null, sets));
-    });
+    const retSetNos = returnedReplacementSets;
     const pidSets = {};
     ACCOUNTS.forEach(a => {
       (queues[String(a.id)] || []).forEach(n => {
@@ -994,7 +1257,6 @@ function computeAutoQueues() {
       });
     });
     Object.keys(pidSets).forEach(pid => {
-      if (isHotPid(pid)) return; // 爆品本来就一号一套
       const byAcct = {};
       pidSets[pid].forEach(x => { (byAcct[x.a] = byAcct[x.a] || []).push(x.n); });
       Object.keys(byAcct).forEach(aid => {
@@ -1011,50 +1273,53 @@ function computeAutoQueues() {
         queues[String(aid)] = (queues[String(aid)] || []).filter(n => !move.includes(n));
         dedupFixed += before - (queues[String(aid)] || []).length;
         move.forEach(n => {
-          let best = null, bestLen = Infinity;
-          ACCOUNTS.forEach(a => {
-            if (String(a.id) === String(aid)) return;
-            const q = queues[String(a.id)] || [];
-            const hasPid = q.some(m => { const pp = bySetNo(m); return pp && String(pp.pid) === pid; });
-            if (!hasPid && q.length < bestLen) { bestLen = q.length; best = a; }
-          });
-          if (!best) {
-            ACCOUNTS.forEach(a => {
-              if (String(a.id) === String(aid)) return;
-              const q = queues[String(a.id)] || [];
-              if (q.length < bestLen) { bestLen = q.length; best = a; }
-            });
-          }
+          const pp = bySetNo(n);
+          if (!pp) return;
+          const best = pickBestTargetAccount(pp, parseInt(aid, 10), queues);
           if (best) (queues[String(best.id)] = queues[String(best.id)] || []).push(n);
-          else { (queues[String(aid)] = queues[String(aid)] || []).push(n); dedupFixed--; }
         });
       });
     });
   }
   lastDedupReport = { fixed: dedupFixed, time: Date.now() };
-  // 4.5 v1.0.28：重做已解决标记——待重做的条目，若其替代套（该 pid 在池子里的最大 set_no，
-  //    与 Step 2 同口径）已在原账号队里，说明新版已派回原号，这条重做已解决，不再显示为待处理。
-  //    只标 status 为 'returned'，不删条目（走现有清理流程：建链接带 cr= 后清除）；
-  //    替代套还没进队的条目保持 pending。注意：Step 2 已跑过，本轮只标不移位，下轮算队时 Step 2 再把它移到队首。
+  // 4.5 重做已解决标记：替换套已在原号队里标 returned；替换套已被原号做完则清理条目
   {
     let redoResolved = false;
+    const keepList = [];
+    const claimed = new Set();
     redoList.forEach(r => {
-      if (r.status !== 'pending') return;
-      const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid) && !isRetired(p)).map(p => p.set_no);
-      if (!sets.length) return;
-      const newest = Math.max.apply(null, sets);
-      if (newest <= (parseInt(r.set_no, 10) || 0)) return; // 池子里还没有新版
-      const q = queues[String(r.account)] || [];
-      if (!q.includes(newest)) return; // 替代套还没进原号队里
-      r.status = 'returned';
-      r.returnedTime = Date.now();
-      redoResolved = true;
+      if (r.status === 'pending') {
+        const newest = findRedoReplacement(r, claimed);
+        if (newest != null) {
+          claimed.add(newest);
+          const newestP = bySetNo(newest);
+          if (newestP && isDone(newestP, r.account)) {
+            redoResolved = true;
+            return;
+          }
+          const q = queues[String(r.account)] || [];
+          if (q.includes(newest)) {
+            r.status = 'returned';
+            r.replacement_set_no = newest;
+            r.returnedTime = Date.now();
+            redoResolved = true;
+          }
+        }
+      } else if (r.status === 'returned' && r.replacement_set_no != null) {
+        const rp = bySetNo(r.replacement_set_no);
+        if (rp && isDone(rp, r.account)) {
+          redoResolved = true;
+          return;
+        }
+      }
+      keepList.push(r);
     });
-    if (redoResolved) saveJSON(LS_REDO, redoList);
+    if (redoResolved) {
+      redoList = keepList;
+      saveJSON(LS_REDO, redoList);
+    }
   }
-  // 5. 记账（发图记号）：队里最终留下的套，凡是账上没有的都记一笔（pid+风格+时间）。
-  //    下次再算队时，第 2/2.5/3 步会查这本账——同一套不发第二次，同一品 24 小时内不发第二次，
-  //    所以更新 products.json 时旧品不会再被推出来。
+  // 5. 记账（发图记号）
   let sentChanged = false;
   ACCOUNTS.forEach(a => {
     (queues[String(a.id)] || []).forEach(n => {
@@ -1063,7 +1328,7 @@ function computeAutoQueues() {
       if (!sentGet(a.id)[String(n)]) { sentRecord(a.id, p); sentChanged = true; }
     });
   });
-  if (sentChanged) sentSave();
+  if (sentChanged) sentSave(false);
   saveAutoQueues(queues);
   return queues;
 }
@@ -1112,7 +1377,7 @@ function renderAuto() {
     if (lastDedupReport.time) {
       ds.textContent = lastDedupReport.fixed > 0
         ? '⚠️ 去重自检：上次计算发现并修正了 ' + lastDedupReport.fixed + ' 处重复（已自动修好）· ' + fmtTime(lastDedupReport.time)
-        : '✓ 去重自检：0 重复（同一套只在一号队里，同一 pid 只在一号队里）· ' + fmtTime(lastDedupReport.time);
+        : '✓ 去重自检：0 重复（同一套只在一号队里，同一号无重复 pid）· ' + fmtTime(lastDedupReport.time);
       ds.style.color = lastDedupReport.fixed > 0 ? '#e8590c' : '#2f9e44';
     } else {
       ds.textContent = '去重自检：等待首次计算…';
@@ -1157,9 +1422,15 @@ function renderAuto() {
     updBtn.style.marginTop = '8px';
     updBtn.textContent = '更新这条队并刷新链接';
     updBtn.addEventListener('click', () => {
-      computeAutoQueues();
-      render();
-      toast('已更新' + a.name + '的自动队，链接已刷新，重新发给手机');
+      if (!isMasterWriter) {
+        toast('当前是只读观察模式，点顶部「接管派单权」后再更新队列');
+        return;
+      }
+      fetchProducts(true).catch(() => false).then(() => {
+        computeAutoQueues();
+        render();
+        toast('已更新' + a.name + '的自动队，链接已刷新，重新发给手机');
+      });
     });
     box.appendChild(updBtn);
     wrap.appendChild(box);
@@ -1185,14 +1456,11 @@ function setMode(m) {
    之前只在自动模式下算，人工模式下队会冻住：某号做完手里的 10 套后，总包不补新货，
    手机点“拉下一组”就拉到空（2026-11-22 3 号实测：队里 10 套全消费完，拉下一组空白）。 */
 function afterStateChange() {
+  if (bootState !== 'ready' || !isMasterWriter) return;
   computeAutoQueues();
 }
-/* v1.0.28：空队自动补货触发——每次成功拉到手机状态后，若有号的队空了（或只剩已做完/待重做的套）、
-   但池子里还有可派给这号的套，立即重算并推送，不等用户手动点。
-   只加触发逻辑，不改派单规则（computeAutoQueues 内部的一品分号、按套 done、24 小时规则原样）。
-   返回是否触发了重算。 */
 function refillEmptyQueuesIfNeeded() {
-  if (bootState !== 'ready') return false; // READY 门：没恢复完成不算队、不推队
+  if (bootState !== 'ready' || !isMasterWriter) return false;
   const queues = loadAutoQueues();
   const manualPids = manualAssignedPids();
   let needRefill = false;
@@ -1202,12 +1470,12 @@ function refillEmptyQueuesIfNeeded() {
       const p = bySetNo(n);
       return p && !isDone(p, a.id) && !isPendRedo(p, a.id);
     }).length;
-    if (remain > 0) return; // 这号还有可做的，不用补
-    // 这号队空了：池子里有没有能派给这号的套？（按 Step 3 候选口径粗判，细则由 computeAutoQueues 再判）
+    if (remain > 0) return;
     const supply = PRODUCTS.some(p => {
       if (isRetired(p)) return false;
       if (isDone(p, null) || isPendRedo(p, null) || manualPids.has(String(p.pid))) return false;
-      if (!sentCanSend(a.id, p)) return false; // 24 小时内发过这品的号不补
+      if (!sentCanSend(a.id, p)) return false;
+      if (q.some(m => { const pp = bySetNo(m); return pp && String(pp.pid) === String(p.pid); })) return false;
       for (const b of ACCOUNTS) {
         if ((queues[String(b.id)] || []).includes(p.set_no)) return false;
       }
@@ -1252,14 +1520,29 @@ function buildLink(accountId) {
     const r = redoEntry(p.pid, accountId);
     if (r && r.status === 'returned') cr.push(String(p.pid));
   });
-  // x：别的账号进行中的 set、已做完的 set、待重做的 set（刷新时跳过，防重复）
+  // x：别的账号进行中的 set、已做完的 set、待重做的 set（按套排除，避免误伤同品另一套）
   const xSet = new Set();
   ACCOUNTS.forEach(a => {
     if (a.id === accountId) return;
     (assign[String(a.id)] || []).forEach(n => xSet.add(n));
   });
-  Object.keys(doneMap).forEach(pid => setsOfPid(pid).forEach(n => xSet.add(n)));
-  redoList.forEach(r => { if (r.status === 'pending') setsOfPid(r.pid).forEach(n => xSet.add(n)); });
+  Object.keys(doneMap).forEach(pid => {
+    const rec = doneMap[pid];
+    if (!rec) return;
+    if (rec.sets) {
+      Object.keys(rec.sets).forEach(sn => {
+        const n = parseInt(sn, 10);
+        if (!isNaN(n)) xSet.add(n);
+      });
+    } else if (rec.set_no != null) {
+      xSet.add(rec.set_no);
+    } else {
+      setsOfPid(pid).forEach(n => xSet.add(n));
+    }
+  });
+  redoList.forEach(r => {
+    if (r.status === 'pending' && r.set_no != null) xSet.add(r.set_no);
+  });
   sets.forEach(n => xSet.delete(n)); // 本次派的不要排除
   const x = Array.from(xSet).sort((a, b) => a - b);
   let base = location.pathname.replace(/(master|index)\.html$/, 'acct.html');
@@ -1293,7 +1576,17 @@ function renderStats() {
   wrap.innerHTML = '';
   ACCOUNTS.forEach(a => {
     const sets = assign[String(a.id)] || [];
-    const doneCount = Object.values(doneMap).filter(d => d.account === a.id).length;
+    let doneCount = 0;
+    Object.keys(doneMap).forEach(pid => {
+      const rec = doneMap[pid];
+      if (!rec) return;
+      const mappedSetKeys = rec.sets ? Object.keys(rec.sets).filter(sn => rec.sets[sn] === a.id) : [];
+      if (mappedSetKeys.length > 0) {
+        doneCount += mappedSetKeys.length;
+      } else if ((rec.legacyAccounts && rec.legacyAccounts[String(a.id)]) || ((!rec.sets || !Object.keys(rec.sets).length) && rec.account === a.id)) {
+        doneCount += 1;
+      }
+    });
     const totalForAcct = sets.length + doneCount;
     const pct = totalForAcct ? Math.round(doneCount / totalForAcct * 100) : 0;
     const box = document.createElement('div');
@@ -1747,16 +2040,18 @@ function updatePullStatus() {
    注意：总包的 redoList 不存 images（只存 pid/套号/标题/时间/原因/备注），恢复后单张重做的图片选择会丢，
    重做标记本身（哪个 pid 要重做）不会丢。 */
 function restorePhoneStateToFirebase(accountId) {
-  // 2026-11-22 新规矩：按套记——每个做完的套一条记录（一个 pid 可能有两套分属两号）。
+  if (!isMasterWriter) return;
+  // 按套记——每个做完的套一条记录；未映射的历史账户也保留为 set_no: null
   const done = [];
   Object.keys(doneMap).forEach(pid => {
     const rec = doneMap[pid];
     if (!rec) return;
-    if (rec.sets) {
-      Object.keys(rec.sets).forEach(sn => {
-        if (rec.sets[sn] === accountId) done.push({ pid: pid, set_no: parseInt(sn, 10) });
+    const mappedKeys = rec.sets ? Object.keys(rec.sets).filter(sn => rec.sets[sn] === accountId) : [];
+    if (mappedKeys.length > 0) {
+      mappedKeys.forEach(sn => {
+        done.push({ pid: pid, set_no: parseInt(sn, 10) });
       });
-    } else if (rec.account === accountId) {
+    } else if ((rec.legacyAccounts && rec.legacyAccounts[String(accountId)]) || ((!rec.sets || !Object.keys(rec.sets).length) && rec.account === accountId)) {
       done.push({ pid: pid, set_no: (rec.set_no != null ? rec.set_no : null) });
     }
   });
@@ -1775,36 +2070,35 @@ function restorePhoneStateToFirebase(accountId) {
 function applyPhoneState(accountId, data) {
   if (!data || typeof data !== 'object') return { done: 0, redo: 0 };
   let nDone = 0, nRedo = 0, nRedoImg = 0;
-  // v1.0.25：done 带 set_no（爆品按 set_no 记任务身份）。新格式 [{pid, set_no}]，老格式 [pid 字符串] 也兼容（set_no 为 null）。
+  // v1.0.30：phoneDone 支持同一 pid 多套（Map<pid, Set<number|null>>），避免同品多套被覆盖
   const phoneDone = new Map();
   (data.done || []).forEach(item => {
-    if (typeof item === 'string') phoneDone.set(String(item), null);
-    else if (item && typeof item === 'object') phoneDone.set(String(item.pid), item.set_no != null ? parseInt(item.set_no, 10) : null);
+    const pid = (typeof item === 'string') ? String(item) : (item && item.pid != null ? String(item.pid) : null);
+    if (!pid) return;
+    const setNo = (item && typeof item === 'object' && item.set_no != null) ? parseInt(item.set_no, 10) : null;
+    if (!phoneDone.has(pid)) phoneDone.set(pid, new Set());
+    phoneDone.get(pid).add((setNo != null && !isNaN(setNo)) ? setNo : null);
   });
   const phoneRedos = new Map((data.redos || []).map(r => [String(r.pid), r]));
   const phoneRedoImgs = (data.redos_img || []).slice();
-  // 空包保护：手机推来一个完全空的状态（没已做完、没待重做、没单张重做），
-  // 但总包这里已经有该号的记录——几乎一定是手机换了浏览器/清了缓存导致本机状态丢了，
-  // 不是用户真的把所有标记都取消了。这时绝不能删总包的记录，否则已同步的做完/重做会“复活”。
-  // 只有非空包才做删除对齐；单条取消（包里还剩别的条）不受影响。
   const incomingEmpty = phoneDone.size === 0 && phoneRedos.size === 0 && phoneRedoImgs.length === 0;
-  // 2026-11-22 新规矩：按套数（一个 pid 可能有两套分属两号）。
   function doneSetsOf(acct) {
     let n = 0;
     Object.keys(doneMap).forEach(pid => {
       const rec = doneMap[pid];
       if (!rec) return;
-      if (rec.sets) Object.keys(rec.sets).forEach(sn => { if (rec.sets[sn] === acct) n++; });
-      else if (rec.account === acct) n++;
+      const mappedKeys = rec.sets ? Object.keys(rec.sets).filter(sn => rec.sets[sn] === acct) : [];
+      if (mappedKeys.length > 0) {
+        n += mappedKeys.length;
+      } else if ((rec.legacyAccounts && rec.legacyAccounts[String(acct)]) || ((!rec.sets || !Object.keys(rec.sets).length) && rec.account === acct)) {
+        n += 1;
+      }
     });
     return n;
   }
   const masterHasAcct = doneSetsOf(accountId) > 0
     || redoList.some(r => r.account === accountId)
     || redoImgList.some(r => r.account === accountId);
-  // v1.0.24 缩水保护：手机推来的已做完+待重做+单张重做总数，不到总包存量的一半，且总包存量不少——
-  // 几乎一定是另一个浏览器整包覆盖（分脑）把记录删了，不是用户真的取消了大半标记。
-  // 这时不做删除对齐，只做新增合并；冲突记下来在页面提示，等人工确认。
   const masterCount = doneSetsOf(accountId)
     + redoList.filter(r => r.account === accountId && r.status === 'pending').length
     + redoImgList.filter(r => r.account === accountId).length;
@@ -1812,9 +2106,6 @@ function applyPhoneState(accountId, data) {
   const shrinkConflict = masterCount > 0 && incomingCount < masterCount / 2;
   if (shrinkConflict) {
     shrinkConflicts[String(accountId)] = { master: masterCount, incoming: incomingCount, time: Date.now() };
-    // v1.0.26：同一个差异只弹一次警告（签名存 localStorage，刷新页面不再重复弹；数字变了才再弹）。
-    // 之前 shrinkConflicts 只在内存里，刷新页面就清零，所以 4 号这种“手机状态丢了、总包还留着记录”的
-    // 已知差异每次重开页面都再弹一次，看着像误报。
     const sig = masterCount + '-' + incomingCount;
     const warned = loadJSON(LS_SHRINK_WARNED, {});
     if (warned[String(accountId)] !== sig) {
@@ -1822,10 +2113,7 @@ function applyPhoneState(accountId, data) {
       saveJSON(LS_SHRINK_WARNED, warned);
       toast('注意：' + accountId + ' 号手机推来的状态比总包少了一半以上（总包 ' + masterCount + ' 条，手机 ' + incomingCount + ' 条），疑似另一个浏览器在覆盖，已先保留总包记录，请检查该号是不是在两个浏览器里同时开着。');
     }
-    // v1.0.26：手机推来的是完全空包（不是少一半，是 0 条）——几乎一定是手机换了浏览器/清了缓存把本机状态丢了，
-    // 不是分脑。把总包存的记录写回 Firebase 帮手机恢复；手机下次同步（v1.0.25 合并写）会把这份状态捡回来，
-    // 差异自己解开，警告也就不再出现。5 分钟内同一个号只恢复一次，防旧版手机整包覆盖回来回拉锯。
-    if (incomingEmpty && masterHasAcct) {
+    if (incomingEmpty && masterHasAcct && isMasterWriter) {
       const restored = loadJSON(LS_SHRINK_RESTORED, {});
       const lastT = restored[String(accountId)] || 0;
       if (Date.now() - lastT > 5 * 60 * 1000) {
@@ -1836,60 +2124,54 @@ function applyPhoneState(accountId, data) {
     }
   } else {
     delete shrinkConflicts[String(accountId)];
-    // 差异解开了，清掉已弹警告的签名，下次再有新差异会重新弹
     const warned = loadJSON(LS_SHRINK_WARNED, {});
     if (warned[String(accountId)]) { delete warned[String(accountId)]; saveJSON(LS_SHRINK_WARNED, warned); }
   }
   const skipDeleteAlign = (incomingEmpty && masterHasAcct) || shrinkConflict;
-  // 已做完：以格子为准整批对齐（该号的）——按套删，只删该号的套，不动别的号的套。
-  // reportedSetNo 三态：undefined=手机没报这 pid（该号的套全删）；null=手机报了 pid 但没 set_no
-  // （老版 acct.html，只报 pid——没法分辨是哪一套，保守地全保留）；数字=手机报了具体套（只留那套）。
   if (!skipDeleteAlign) {
     Object.keys(doneMap).forEach(pid => {
       const rec = doneMap[pid];
       if (!rec) return;
-      const reportedSetNo = phoneDone.has(pid) ? phoneDone.get(pid) : undefined;
+      const reportedSet = phoneDone.has(pid) ? phoneDone.get(pid) : null;
+      const hasOnlyNull = reportedSet ? (reportedSet.size === 1 && reportedSet.has(null)) : false;
       if (rec.sets) {
         Object.keys(rec.sets).forEach(sn => {
           if (rec.sets[sn] !== accountId) return;
-          if (reportedSetNo === undefined) delete rec.sets[sn];
-          else if (reportedSetNo != null && sn !== String(reportedSetNo)) delete rec.sets[sn];
-          // reportedSetNo === null：老格式，全保留
+          if (!reportedSet) delete rec.sets[sn];
+          else if (!hasOnlyNull && !reportedSet.has(parseInt(sn, 10))) delete rec.sets[sn];
         });
-        if (Object.keys(rec.sets).length === 0) delete doneMap[pid];
-      } else {
-        // 老数据：只有一套
-        if (rec.account === accountId && !phoneDone.has(pid)) delete doneMap[pid];
+      }
+      if (rec.legacyAccounts && !reportedSet) {
+        delete rec.legacyAccounts[String(accountId)];
+      }
+      if ((!rec.sets || Object.keys(rec.sets).length === 0) && (!rec.legacyAccounts || Object.keys(rec.legacyAccounts).length === 0)) {
+        if (!reportedSet || rec.account === accountId) delete doneMap[pid];
       }
     });
   }
-  phoneDone.forEach((setNo, pid) => {
+  phoneDone.forEach((setNoSet, pid) => {
     if (!byPid(pid)) return;
-    // 2026-11-22 新规矩：按套合并进 sets（一个 pid 可能有两套分属两号，互不覆盖）。
-    const rec = doneMap[pid] || { account: accountId, time: Date.now(), sets: {} };
-    if (!rec.sets) {
-      rec.sets = {};
-      if (rec.set_no != null && rec.account != null) rec.sets[String(rec.set_no)] = rec.account;
-    }
-    if (setNo != null) {
-      if (rec.sets[String(setNo)] == null) nDone++;
-      rec.sets[String(setNo)] = accountId;
-      rec.account = accountId; rec.time = Date.now(); rec.set_no = setNo;
-    } else {
-      // 老格式没 set_no（手机还是老版 acct.html，只报 pid）：从该号队里推断是哪一套——
-      // 该号队里该 pid 的那套就是做完的那套（手机做完的套一定在它队里；新规矩下一号一品只有一套，不会歧义）。
-      const inQ = (autoQueues[String(accountId)] || []).concat(assign[String(accountId)] || [])
-        .find(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; });
-      if (inQ != null) {
-        if (rec.sets[String(inQ)] == null) nDone++;
-        rec.sets[String(inQ)] = accountId;
-        rec.account = accountId; rec.time = Date.now(); rec.set_no = inQ;
+    const rec = ensureDoneRec(pid);
+    setNoSet.forEach(setNo => {
+      if (setNo != null) {
+        if (rec.sets[String(setNo)] == null) nDone++;
+        rec.sets[String(setNo)] = accountId;
+        if (rec.legacyAccounts) delete rec.legacyAccounts[String(accountId)];
+        rec.account = accountId; rec.time = Date.now(); rec.set_no = setNo;
       } else {
-        // 队里没有该 pid 的套（比如已清掉）：保守地记 pid 级标记，不往 sets 里写。
-        if (!doneMap[pid]) nDone++;
-        rec.account = accountId; rec.time = Date.now();
+        const resolved = resolveLegacyDoneSetNo(accountId, pid, autoQueues);
+        if (resolved != null) {
+          if (rec.sets[String(resolved)] == null) nDone++;
+          rec.sets[String(resolved)] = accountId;
+          if (rec.legacyAccounts) delete rec.legacyAccounts[String(accountId)];
+          rec.account = accountId; rec.time = Date.now(); rec.set_no = resolved;
+        } else {
+          if (!hasAccountDonePid(accountId, pid)) nDone++;
+          rec.legacyAccounts[String(accountId)] = true;
+          rec.time = Date.now();
+        }
       }
-    }
+    });
     doneMap[pid] = rec;
   });
   // 待重做：以格子为准整批对齐（该号的 pending；returned 的不动，除非手机又重做了同一 pid）
@@ -1971,10 +2253,7 @@ function applyPhoneState(accountId, data) {
   });
   return { done: nDone, redo: nRedo, redoImg: nRedoImg };
 }
-function pullFromChannel() {
-  // v1.0.25：返回值 = “拉取成功”（至少一个号的请求成功，哪怕返回空数据）。
-  // 旧版返回“至少一个号有实际数据”：8 台手机都没报过状态时返回 false，启动会被误判为失败进 DEGRADED、算不了队。
-  // 空数据是合法状态（还没人报过），不是网络失败；只有请求本身失败（HTTP 错误/断网）才算失败。
+function pullFromChannel(requireAll = false) {
   const jobs = ACCOUNTS.map(a =>
     fetch(SYNC_BASE + a.id + '.json', { headers: { 'Accept': 'application/json' } })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
@@ -1983,16 +2262,15 @@ function pullFromChannel() {
   );
   if (!jobs.length) { updatePullStatus(); return Promise.resolve(false); }
   return Promise.all(jobs).then(results => {
-    const ok = results.some(x => x !== 'fail'); // 至少一个号成功拉到（含空数据）
+    const ok = requireAll ? results.every(x => x !== 'fail') : results.some(x => x !== 'fail');
     lastPullTime = Date.now();
     lastPullOk = ok;
     if (ok) {
-      bootReady = true; // v1.0.24：第一次成功拉到手机状态，放行推队
       saveJSON(LS_DONE, doneMap);
       saveJSON(LS_REDO, redoList);
       saveJSON(LS_REDO_IMG, redoImgList);
       saveJSON(LS_ASSIGN, assign);
-      afterStateChange();
+      if (bootState === 'ready' && isMasterWriter) afterStateChange();
       render();
     }
     updatePullStatus();
@@ -2000,11 +2278,38 @@ function pullFromChannel() {
   });
 }
 document.getElementById('pullBtn').addEventListener('click', () => {
-  pullFromChannel().then(ok => {
-    if (ok) refillEmptyQueuesIfNeeded(); // v1.0.28：空队自动补货触发
+  fetchProducts(true).catch(() => false).then(() => pullFromChannel(false)).then(ok => {
+    if (ok && bootState === 'ready' && isMasterWriter) refillEmptyQueuesIfNeeded();
     toast(ok ? '已拉取各手机最新状态' : '拉取失败，请检查网络');
   });
 });
+const takeoverBtnEl = document.getElementById('takeoverBtn');
+if (takeoverBtnEl) {
+  takeoverBtnEl.addEventListener('click', () => {
+    acquireOrCheckMasterLock(true).then(won => {
+      if (!won) { toast('接管失败，请检查网络后重试'); return; }
+      Promise.all([
+        fetchProducts(true).catch(() => false),
+        restoreSentFromCloud(),
+        restoreQueuesFromCloud()
+      ]).then(([, sOk, qOk]) => {
+        return pullFromChannel(true).then(pOk => {
+          if (sOk && qOk && pOk) {
+            bootState = 'ready';
+            bootReady = true;
+            updateBootBanner();
+            try { migrateOldDone(); } catch (e) {}
+            computeAutoQueues();
+            render();
+            toast('已接管派单权并同步云端最新队列');
+          } else {
+            toast('已接管，但云端同步不完整，请点「立即同步」重试');
+          }
+        });
+      });
+    });
+  });
+}
 document.getElementById('forcePullBtn').addEventListener('click', () => {
   if (!confirm('强制重拉会清空总包本机记的已做完 / 待重做 / 单张重做，再从云端重新拉一遍。派单记录和手动派单不受影响。确定吗？')) return;
   doneMap = {};
@@ -2067,7 +2372,7 @@ document.getElementById('genBtn').addEventListener('click', () => {
     sets.forEach(n => {
       const p = bySetNo(n);
       if (!p) return;
-      if (canDispatch(p, a.id).ok) okSets.push(n);
+      if (canDispatch(p, a.id, true).ok) okSets.push(n);
     });
     if (okSets.length > BATCH) { capped = true; okSets.length = BATCH; }
     if (!okSets.length) return;
@@ -2101,9 +2406,15 @@ document.getElementById('modeManualBtn').addEventListener('click', () => {
   toast('已切换到人工派单');
 });
 document.getElementById('genAutoBtn').addEventListener('click', () => {
-  computeAutoQueues();
-  render();
-  toast('自动队已更新，复制下方自动链接发给手机');
+  if (!isMasterWriter) {
+    toast('当前是只读观察模式，点顶部「接管派单权」后再操作');
+    return;
+  }
+  fetchProducts(true).catch(() => false).then(() => {
+    computeAutoQueues();
+    render();
+    toast('自动队已更新，复制下方自动链接发给手机');
+  });
 });
 document.getElementById('onlyPoolBtn').addEventListener('click', function () {
   onlyPool = !onlyPool;
@@ -2143,21 +2454,15 @@ document.getElementById('clearAssignBtn').addEventListener('click', () => {
   render();
 });
 
-fetch('products.json?v=' + APP_VERSION)
-  .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
-  .then(data => {
-    PRODUCTS = data;
-    fillManualSelects();
-    // v1.0.25 启动顺序（GPT 重设计 P0）：先恢复发图账，再拉手机状态，两者都成功才 READY。
-    // 发图账恢复失败不能当成“已恢复”（旧版 catch 后照常启动，就是 10:06 丢账的路径）。
-    return restoreSentFromCloud();
-  })
-  .then(() => {
-    // 拉一次手机状态，等它完成再决定 READY / DEGRADED（setMode 不再隐式算队）。
-    return pullFromChannel();
-  })
+fetchProducts(true)
+  .then(() => Promise.all([
+    acquireOrCheckMasterLock(false),
+    restoreSentFromCloud(),
+    restoreQueuesFromCloud()
+  ]))
+  .then(() => pullFromChannel(true))
   .then(pullOk => {
-    if (sentLoadOk && pullOk) {
+    if (sentLoadOk && queuesLoadOk && pullOk) {
       bootState = 'ready';
       bootReady = true;
     } else {
@@ -2165,17 +2470,24 @@ fetch('products.json?v=' + APP_VERSION)
     }
     updateBootBanner();
     setMode(mode);
-    // v1.0.27：旧 done 数据迁移（只记 pid 的转成按套记），必须在第一次算队前跑，
-    // 否则已做完的套会被 isDone 判“没做完”重新派回去。
     try { const m = migrateOldDone(); if (m > 0) console.log('migrateOldDone: 迁移了 ' + m + ' 条旧 done 记录'); } catch (e) {}
-    if (bootState === 'ready') computeAutoQueues();
+    if (bootState === 'ready' && isMasterWriter) computeAutoQueues();
     render();
-    // 自动同步：之后每 5 秒拉一次各手机最新状态；degraded 时每次拉成功都尝试恢复 READY。
     setInterval(() => {
-      pullFromChannel().then(ok => {
-        if (ok && bootState !== 'ready') maybeBecomeReady();
-        // v1.0.28：空队自动补货触发——拉成功后有号队空了且池里有货，立即重算并推送
-        if (ok) refillEmptyQueuesIfNeeded();
+      fetchProducts(false).catch(() => false).then(prodChanged => {
+        return acquireOrCheckMasterLock(false).then(writerOk => {
+          if (!writerOk) {
+            return Promise.all([restoreQueuesFromCloud(), pullFromChannel(false)]).then(() => render());
+          }
+          return pullFromChannel(false).then(ok => {
+            if (ok && bootState !== 'ready') return maybeBecomeReady();
+            if (ok && bootState === 'ready') {
+              if (prodChanged) computeAutoQueues();
+              else refillEmptyQueuesIfNeeded();
+              render();
+            }
+          });
+        });
       });
     }, 5000);
   })

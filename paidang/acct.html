@@ -150,7 +150,8 @@
   </div>
   <div class="hint">做完先点“提交给总包”，把已做完和待重做发给总包；要继续做就点“拉下一组”，跳过已做完/已重做的，拿接下来没做过的 10 套</div>
   <div class="sync-line" id="syncLine"></div>
-  <div class="sync-line" id="versionLine" style="color:#bbb;">子工作台 v1.0.29 · 2026-11-22</div>
+  <div class="sync-line" id="versionLine" style="color:#bbb;">子工作台 v1.0.30 · 2026-11-22</div>
+  <div id="versionBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:8px 10px; margin-top:6px; border-radius:6px; font-size:13px;">检测到新版本，请刷新页面后再继续操作。</div>
 </div>
 
 <header>
@@ -223,10 +224,16 @@
 <div id="toast" class="toast" hidden></div>
 
 <script>
-/* ================= 账号配置：与 master.html 保持一致，加账号在这里加一行 ================= */
+/* ================= 账号配置：与 master.html 保持一致 ================= */
 const ACCOUNTS = [
   { id: 1, name: '账号 1' },
-  { id: 2, name: '账号 2' }
+  { id: 2, name: '账号 2' },
+  { id: 3, name: '账号 3' },
+  { id: 4, name: '账号 4' },
+  { id: 5, name: '账号 5' },
+  { id: 6, name: '账号 6' },
+  { id: 7, name: '账号 7' },
+  { id: 8, name: '账号 8' }
 ];
 const IMG_BASE = 'data/';
 
@@ -237,8 +244,51 @@ const ASSIGNED_SETS = (params.get('s') || '')
   .split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
 const ACCT_NAME = (ACCOUNTS.find(a => a.id === ACCT_ID) || {}).name || ('账号 ' + (ACCT_ID || '?'));
 const BATCH = 10;               // 每组拉 10 个
-const APP_VERSION = 'v1.0.29'; // 页面版本（显示在页头；与 master.html 统一管理，发现线上更新时提示刷新）
+const APP_VERSION = 'v1.0.30'; // 页面版本（与 master.html 保持同步）
 const EMPTY_RECHECK_MS = 60000; // v1.0.28：队空时自动等补货，每 60 秒重新拉一次总包最新队
+const REFILL_RETRY_DELAYS = [2800, 3200]; // v1.0.30：刷新空组时容忍总包 5 秒补货周期
+let lastProductsFetchAt = 0;
+let isRefreshing = false;
+
+function parseVer(v) {
+  const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)] : [0, 0, 0];
+}
+function isNewerVer(a, b) {
+  const x = parseVer(a), y = parseVer(b);
+  for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] > y[i]; }
+  return false;
+}
+function checkVersion() {
+  try {
+    const url = location.pathname + '?_vc=' + Date.now();
+    fetch(url, { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(text => {
+        const m = text.match(/APP_VERSION\s*=\s*'([^']+)'/);
+        if (m && isNewerVer(m[1], APP_VERSION)) {
+          const b = document.getElementById('versionBanner');
+          if (b) {
+            b.style.display = 'block';
+            b.textContent = '检测到子工作台新版本 ' + m[1] + '（当前 ' + APP_VERSION + '），请刷新页面后再拉新单。';
+          }
+        }
+      })
+      .catch(() => {});
+  } catch (e) {}
+}
+checkVersion();
+
+function fetchProductsFresh() {
+  return fetch('products.json?_t=' + Date.now(), { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
+    .then(data => {
+      if (!Array.isArray(data) || !data.length) throw new Error('products.json 为空');
+      PRODUCTS = data;
+      lastProductsFetchAt = Date.now();
+      return true;
+    });
+}
 /* 刷新时要跳过的 set_no：总包在链接里带的（?x=），别的账号手里的 + 已做完 + 待重做的（防重复）。
    没有 x 参数的旧链接也能打开，刷新时只按本机已做完/已重做过滤。 */
 const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0));
@@ -248,32 +298,42 @@ const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseI
 const AUTO_MODE = params.get('auto') === '1';
 let AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
 const LINK_Q = (params.get('q') || ''); // v1.0.24：链接本身的 q（打开链接时就定死，之后 Firebase 队怎么变它都不变）
-/* 从 Firebase 拉本号最新队（总包每 5 秒推一次）。返回 true 表示队变了。 */
+/* 从 Firebase 拉本号最新队（总包推上来）。只同步 AUTO_QUEUE / autoQueueProducts 并按需热刷 products.json，
+   绝不私自调用 setupAutoQueue() 覆盖当前屏幕，避免“自动刷走”或误吃新品。 */
 function fetchQueueFromFirebase() {
-  // v1.0.25：返回值区分三种情况（GPT 重设计 §5.1）——
-  // 'ok' = 拿到新队；'empty' = 服务器确认队是空的（旧链接的 q 不能复活）；'error' = 网络/数据失败（不能用旧 q 领任务）。
-  // 旧版空队和失败都返回 false，手机会继续用 URL 上的旧队领任务。
   if (!AUTO_MODE) return Promise.resolve('error');
   return fetch(SYNC_BASE + '/queue/acct' + ACCT_ID + '.json', { headers: { 'Accept': 'application/json' } })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(data => {
-      if (!data || !Array.isArray(data.q)) return 'empty';
+    .then(async data => {
+      if (!data || !Array.isArray(data.q)) {
+        AUTO_QUEUE = [];
+        autoQueueProducts = [];
+        return 'empty';
+      }
       const q = data.q.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n > 0);
-      if (!q.length) return 'empty';
-      if (q.join(',') === AUTO_QUEUE.join(',')) return 'ok';
+      if (!q.length) {
+        AUTO_QUEUE = [];
+        autoQueueProducts = [];
+        return 'empty';
+      }
       AUTO_QUEUE = q;
-      setupAutoQueue();
+      if (AUTO_QUEUE.some(n => !bySetNo(n))) {
+        try { await fetchProductsFresh(); } catch (e) {}
+      }
+      autoQueueProducts = AUTO_QUEUE.map(bySetNo).filter(Boolean);
       return 'ok';
     })
     .catch(() => 'error');
 }
 
 /* 本账号的本地状态（只存在这台手机上，别的账号看不到，也不会互相影响） */
-const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: set_no } —— 按 pid 记，做完永不再推（v1.0.25 值改存 set_no，爆品按 set_no 记任务身份；老数据 true 也兼容）
+const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: set_no | [set_no...] | true }
 const LS_REMOVED = 'paidang_removed_a' + ACCT_ID; // { set_no: true } —— 按套移除，可恢复
 const LS_REDO = 'paidang_redo_a' + ACCT_ID;       // { pid: {time, set_no, title_cn, reasons, note} } —— 按 pid 记，整组重做
 const LS_REDO_IMG = 'paidang_redo_img_a' + ACCT_ID; // { pid: {set_no, title_cn, images: {imgNo: {fn, reasons, note, time}}} } —— 单张重做（图N）
-const LS_CLEARED_REDO = 'paidang_cleared_redo_a' + ACCT_ID; // v1.0.25：{ pid: time } —— 本机清掉的重做标记（cr 清除/手动取消），合并写时据此拦住云端旧记录复活（tombstone）
+const LS_CLEARED_REDO = 'paidang_cleared_redo_a' + ACCT_ID; // { pid: time }
+const LS_CLEARED_DONE = 'paidang_cleared_done_a' + ACCT_ID; // v1.0.30：{ "pid#set_no": time, "pid": time } —— 恢复已做完 tombstone
+const LS_CLEARED_REDO_IMG = 'paidang_cleared_redo_img_a' + ACCT_ID; // v1.0.30：{ "pid#imgNo": time } —— 撤销单张重做 tombstone
 const LS_AUTO_Q = 'paidang_auto_q_a' + ACCT_ID;   // 上次打开的自动队（q 字符串，用来判断链接是不是更新了）
 const LS_AUTO_SEEN = 'paidang_auto_seen_a' + ACCT_ID; // 已被刷新跳过的 set_no（本机已看过的组）
 
@@ -299,6 +359,7 @@ let syncStatus = ''; // 上次推送结果：'ok' | 'fail' | ''
 // 合并规则：done 取并集；redos 按 pid 取时间更新的，tombstone（本机清掉的）拦住云端旧记录复活；
 // redos_img 按 (pid, 图号) 取时间更新的。GET 失败时退回整包 PUT（不断网时不丢数据），并标记 fail。
 function mergePhoneState(cloud, local) {
+  const cloudTime = (cloud && cloud.updated) ? cloud.updated : 0;
   const merged = {
     account: local.account,
     updated: Date.now(),
@@ -306,26 +367,36 @@ function mergePhoneState(cloud, local) {
     redos: [],
     redos_img: [],
   };
-  // done：并集（按 pid；同一 pid 取带 set_no 的那条，爆品按 set_no 记任务身份）
+  // done：按 (pid, set_no) 去重合并，保留时间并拦截本机 tombstone
   const doneMap = new Map();
+  const putDone = (pid, setNo, tm) => {
+    const key = pid + '#' + (setNo != null ? setNo : 'null');
+    if (setNo != null) doneMap.delete(pid + '#null');
+    const cur = doneMap.get(key);
+    if (!cur || (tm || 0) > (cur.time || 0)) doneMap.set(key, { pid: pid, set_no: setNo, time: tm || Date.now() });
+  };
   (cloud && Array.isArray(cloud.done) ? cloud.done : []).forEach(item => {
     const pid = typeof item === 'string' ? String(item) : String(item.pid);
     const setNo = (item && typeof item === 'object' && item.set_no != null) ? parseInt(item.set_no, 10) : null;
-    doneMap.set(pid, { pid: pid, set_no: setNo });
+    const itemTime = (item && typeof item === 'object' && item.time) ? item.time : cloudTime;
+    const tombSet = setNo != null ? (clearedDoneState[pid + '#' + setNo] || 0) : 0;
+    const tombPid = clearedDoneState[pid] || 0;
+    const tomb = Math.max(tombSet, tombPid);
+    if (tomb && tomb >= itemTime) return;
+    putDone(pid, setNo, itemTime);
   });
   (local.done || []).forEach(item => {
     const pid = String(item.pid);
-    const cur = doneMap.get(pid);
-    const setNo = item.set_no != null ? item.set_no : null;
-    if (!cur || (cur.set_no == null && setNo != null)) doneMap.set(pid, { pid: pid, set_no: setNo });
+    const setNo = item.set_no != null ? parseInt(item.set_no, 10) : null;
+    putDone(pid, setNo, item.time || Date.now());
   });
-  merged.done = Array.from(doneMap.values());
+  merged.done = Array.from(doneMap.values()).map(x => ({ pid: x.pid, set_no: x.set_no }));
   // redos：按 pid 取时间更新的；tombstone 拦住已清掉的
   const redoMap = new Map();
   (cloud && Array.isArray(cloud.redos) ? cloud.redos : []).forEach(r => {
     const pid = String(r.pid);
     const tomb = clearedRedoState[pid] || 0;
-    if (tomb >= (r.time || 0)) return; // 本机清掉的，不复活
+    if (tomb >= (r.time || 0)) return;
     redoMap.set(pid, r);
   });
   (local.redos || []).forEach(r => {
@@ -334,10 +405,15 @@ function mergePhoneState(cloud, local) {
     if (!cur || (r.time || 0) >= (cur.time || 0)) redoMap.set(pid, r);
   });
   merged.redos = Array.from(redoMap.values());
-  // redos_img：按 (pid, 图号) 取时间更新的
+  // redos_img：按 (pid, 图号) 取时间更新的；tombstone 拦住撤销的单张重做
   const imgMap = new Map();
   const imgKey = it => String(it.pid) + '#' + String(it.img);
-  (cloud && Array.isArray(cloud.redos_img) ? cloud.redos_img : []).forEach(it => imgMap.set(imgKey(it), it));
+  (cloud && Array.isArray(cloud.redos_img) ? cloud.redos_img : []).forEach(it => {
+    const k = imgKey(it);
+    const tomb = clearedRedoImgState[k] || 0;
+    if (tomb >= (it.time || cloudTime || 0)) return;
+    imgMap.set(k, it);
+  });
   (local.redos_img || []).forEach(it => {
     const k = imgKey(it);
     const cur = imgMap.get(k);
@@ -346,13 +422,82 @@ function mergePhoneState(cloud, local) {
   merged.redos_img = Array.from(imgMap.values());
   return merged;
 }
+function applyMergedPayloadLocally(payload) {
+  if (!payload) return false;
+  let changed = false;
+  (payload.done || []).forEach(item => {
+    const pid = String(item.pid);
+    const setNo = item.set_no != null ? parseInt(item.set_no, 10) : null;
+    const cur = doneState[pid];
+    if (setNo != null) {
+      if (cur == null) {
+        doneState[pid] = setNo;
+        changed = true;
+      } else if (typeof cur === 'number' && cur !== setNo) {
+        doneState[pid] = [cur, setNo];
+        changed = true;
+      } else if (Array.isArray(cur) && !cur.includes(setNo)) {
+        cur.push(setNo);
+        changed = true;
+      }
+    } else if (cur == null) {
+      doneState[pid] = true;
+      changed = true;
+    }
+  });
+  (payload.redos || []).forEach(r => {
+    const pid = String(r.pid);
+    const tomb = clearedRedoState[pid] || 0;
+    if (tomb >= (r.time || 0)) return;
+    const cur = redoState[pid];
+    if (!cur || (r.time || 0) > (cur.time || 0)) {
+      redoState[pid] = {
+        time: r.time || Date.now(),
+        set_no: r.set_no,
+        title_cn: r.title_cn || '',
+        reasons: r.reasons || [],
+        note: r.note || '',
+        images: r.images || []
+      };
+      changed = true;
+    }
+  });
+  (payload.redos_img || []).forEach(it => {
+    const pid = String(it.pid);
+    const imgNo = parseInt(it.img, 10);
+    const tomb = clearedRedoImgState[pid + '#' + imgNo] || 0;
+    if (tomb >= (it.time || 0)) return;
+    if (!redoImgState[pid]) redoImgState[pid] = { set_no: it.set_no, title_cn: it.title_cn || '', images: {} };
+    const cur = redoImgState[pid].images[imgNo];
+    if (!cur || (it.time || 0) > (cur.time || 0)) {
+      redoImgState[pid].images[imgNo] = { fn: it.fn || '', reasons: it.reasons || [], note: it.note || '', time: it.time || Date.now() };
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveJSON(LS_DONE, doneState);
+    saveJSON(LS_REDO, redoState);
+    saveJSON(LS_REDO_IMG, redoImgState);
+    if (AUTO_MODE) {
+      currentAssigned = computeAutoBatch();
+    }
+    if (PRODUCTS.length) render(currentAssigned);
+  }
+  return changed;
+}
 function pushStateToChannel() {
   if (!SYNC_URL) return Promise.resolve(false);
+  const doneItems = [];
+  Object.keys(doneState).forEach(pid => {
+    const v = doneState[pid];
+    if (typeof v === 'number') doneItems.push({ pid: pid, set_no: v });
+    else if (Array.isArray(v)) v.forEach(sn => { if (typeof sn === 'number') doneItems.push({ pid: pid, set_no: sn }); });
+    else if (v) doneItems.push({ pid: pid, set_no: null });
+  });
   const localPayload = {
     account: ACCT_ID,
     updated: Date.now(),
-    // v1.0.25：done 带 set_no（爆品按 set_no 记任务身份）；老数据 true 时 set_no 为 null
-    done: Object.keys(doneState).map(pid => ({ pid: pid, set_no: (typeof doneState[pid] === 'number' ? doneState[pid] : null) })),
+    done: doneItems,
     redos: Object.keys(redoState).map(pid => {
       const info = redoState[pid] || {};
       return { pid: pid, set_no: info.set_no, title_cn: info.title_cn, time: info.time, reasons: info.reasons || [], note: info.note || '', images: info.images || [] };
@@ -365,11 +510,11 @@ function pushStateToChannel() {
       });
     })
   };
-  // 先 GET 再并集 PUT；GET 失败时退回整包 PUT
   return fetch(SYNC_URL, { headers: { 'Accept': 'application/json' } })
     .then(r => (r.ok ? r.json() : null)).catch(() => null)
     .then(cloud => {
       const payload = cloud ? mergePhoneState(cloud, localPayload) : localPayload;
+      if (cloud) applyMergedPayloadLocally(payload);
       return fetch(SYNC_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(payload) });
     })
     .then(r => { syncStatus = r.ok ? 'ok' : 'fail'; return r.ok; })
@@ -402,9 +547,40 @@ redoImgState = loadJSON(LS_REDO_IMG, {});
 const CLEAR_REDO = (params.get('cr') || '').split(',').map(s => s.trim()).filter(Boolean);
 // v1.0.25：清掉重做标记时记 tombstone（时间），合并写时云端旧记录不复活。
 let clearedRedoState = loadJSON(LS_CLEARED_REDO, {});
+let clearedDoneState = loadJSON(LS_CLEARED_DONE, {});
+let clearedRedoImgState = loadJSON(LS_CLEARED_REDO_IMG, {});
 function recordClearedRedo(pid) {
   clearedRedoState[String(pid)] = Date.now();
   saveJSON(LS_CLEARED_REDO, clearedRedoState);
+}
+function recordClearedDone(pid, setNo) {
+  const t = Date.now();
+  if (setNo != null) clearedDoneState[String(pid) + '#' + setNo] = t;
+  clearedDoneState[String(pid)] = t;
+  saveJSON(LS_CLEARED_DONE, clearedDoneState);
+}
+function unrecordClearedDone(pid, setNo) {
+  let changed = false;
+  if (setNo != null && clearedDoneState[String(pid) + '#' + setNo]) {
+    delete clearedDoneState[String(pid) + '#' + setNo];
+    changed = true;
+  }
+  if (clearedDoneState[String(pid)]) {
+    delete clearedDoneState[String(pid)];
+    changed = true;
+  }
+  if (changed) saveJSON(LS_CLEARED_DONE, clearedDoneState);
+}
+function recordClearedRedoImg(pid, imgNo) {
+  clearedRedoImgState[String(pid) + '#' + String(imgNo)] = Date.now();
+  saveJSON(LS_CLEARED_REDO_IMG, clearedRedoImgState);
+}
+function unrecordClearedRedoImg(pid, imgNo) {
+  const k = String(pid) + '#' + String(imgNo);
+  if (clearedRedoImgState[k]) {
+    delete clearedRedoImgState[k];
+    saveJSON(LS_CLEARED_REDO_IMG, clearedRedoImgState);
+  }
 }
 if (CLEAR_REDO.length) {
   let changed = false;
@@ -428,7 +604,41 @@ function fmtTime(ts) {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 function bySetNo(n) { return PRODUCTS.find(p => p.set_no === n); }
-function isDone(p) { return !!doneState[String(p.pid)]; }
+function isDone(p) {
+  const v = doneState[String(p.pid)];
+  if (!v) return false;
+  if (v === true) return true;
+  if (typeof v === 'number') return v === p.set_no;
+  if (Array.isArray(v)) return v.includes(p.set_no);
+  return false;
+}
+function markSetDone(p) {
+  const pid = String(p.pid);
+  const cur = doneState[pid];
+  if (cur == null || cur === true) {
+    doneState[pid] = p.set_no;
+  } else if (typeof cur === 'number') {
+    if (cur !== p.set_no) doneState[pid] = [cur, p.set_no];
+  } else if (Array.isArray(cur)) {
+    if (!cur.includes(p.set_no)) cur.push(p.set_no);
+  }
+  unrecordClearedDone(pid, p.set_no);
+  saveJSON(LS_DONE, doneState);
+}
+function unmarkSetDone(p) {
+  const pid = String(p.pid);
+  const cur = doneState[pid];
+  if (Array.isArray(cur)) {
+    const rest = cur.filter(n => n !== p.set_no);
+    if (rest.length === 1) doneState[pid] = rest[0];
+    else if (rest.length === 0) delete doneState[pid];
+    else doneState[pid] = rest;
+  } else {
+    delete doneState[pid];
+  }
+  recordClearedDone(pid, p.set_no);
+  saveJSON(LS_DONE, doneState);
+}
 // v1.0.29：重做按套判，不按 pid 判——替代套（同一 pid、不同 set_no）不再被当成重做。
 // 之前按 pid 判：5 号队里 5 套替代套（128/137/146/142/105）被当成待重做藏起来，还剩 0 套。
 function isRedo(p) {
@@ -437,6 +647,15 @@ function isRedo(p) {
 }
 function fmtHM(ts) { const d = new Date(ts); const p = x => String(x).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()); }
 function imgURL(p, fn) { return enc(IMG_BASE + p.folder + '/' + fn); }
+function isRedoResolvedByDone(pid, info) {
+  const v = doneState[pid];
+  if (!v) return false;
+  if (v === true) return true;
+  const redoSn = info && info.set_no != null ? parseInt(info.set_no, 10) : null;
+  if (typeof v === 'number') return redoSn == null || v > redoSn;
+  if (Array.isArray(v)) return v.some(n => typeof n === 'number' && (redoSn == null || n > redoSn));
+  return false;
+}
 function isRedoImg(p, imgNo) {
   const e = redoImgState[String(p.pid)];
   return !!(e && e.images && e.images[imgNo] && e.set_no === p.set_no);
@@ -497,6 +716,7 @@ function openImgRedoPicker(p, imgNo, fn, grid) {
     const reasons = Array.from(box.querySelectorAll('input:checked')).map(x => x.value);
     if (!redoImgState[String(p.pid)]) redoImgState[String(p.pid)] = { set_no: p.set_no, title_cn: p.title_cn, images: {} };
     redoImgState[String(p.pid)].images[imgNo] = { fn: fn, reasons: reasons, note: note.value.trim(), time: Date.now() };
+    unrecordClearedRedoImg(p.pid, imgNo);
     saveJSON(LS_REDO_IMG, redoImgState);
     pushStateToChannel();
     render(currentAssigned);
@@ -573,6 +793,7 @@ function openImgRedoPickerMulti(p, grid) {
     if (!redoImgState[String(p.pid)]) redoImgState[String(p.pid)] = { set_no: p.set_no, title_cn: p.title_cn, images: {} };
     picked.forEach(imgNo => {
       redoImgState[String(p.pid)].images[imgNo] = { fn: p.images[imgNo - 1], reasons: reasons, note: noteTxt, time: Date.now() };
+      unrecordClearedRedoImg(p.pid, imgNo);
     });
     saveJSON(LS_REDO_IMG, redoImgState);
     pushStateToChannel();
@@ -650,8 +871,8 @@ function render(assignedList) {
     btn.type = 'button';
     btn.textContent = '恢复';
     btn.addEventListener('click', () => {
-      delete doneState[String(p.pid)];
-      saveJSON(LS_DONE, doneState);
+      unmarkSetDone(p);
+      pushStateToChannel();
       render(assignedList);
       toast('已恢复该品，会重新出现在列表里');
     });
@@ -660,11 +881,8 @@ function render(assignedList) {
     ul.appendChild(li);
   });
 
-  // 待重做清单（点错了可撤销；推送给总包）
-  // v1.0.29：直接按 redoState 里的记录显示，用存下来的 set_no（工人真正重做的那套），
-  // 不要按 pid 去队里现找——队一重排，队里那套就变了（3 号 Anua 显示 131 套、实际重做的是 51 套）。
-  // 已做完的 pid 不再显示（替代套做完了 = 这条重做已解决）。
-  const redoPids = Object.keys(redoState).filter(pid => !doneState[pid]);
+  // 待重做清单：按套判——仅当该 pid 存在更新的替换套（set_no > info.set_no）被做完或旧格式 true 时才隐藏
+  const redoPids = Object.keys(redoState).filter(pid => !isRedoResolvedByDone(pid, redoState[pid]));
   const redoItems = redoPids;
   // 单张待重做：全队里被标记过的图
   const redoImgItems = [];
@@ -721,6 +939,7 @@ function render(assignedList) {
         delete e.images[it.imgNo];
         if (!Object.keys(e.images).length) delete redoImgState[it.pid];
       }
+      recordClearedRedoImg(it.pid, it.imgNo);
       saveJSON(LS_REDO_IMG, redoImgState);
       pushStateToChannel();
       render(assignedList);
@@ -872,9 +1091,7 @@ function buildCard(p) {
       return;
     }
     clearTimeout(armTimer);
-    // v1.0.25：done 按 set_no 记（爆品按 set_no 记任务身份）。值存 set_no，老数据是 true 时 set_no 为 null。
-    doneState[String(p.pid)] = p.set_no;
-    saveJSON(LS_DONE, doneState);
+    markSetDone(p);
     pushStateToChannel();
     render(currentAssigned);
     toast('已做完，这个 pid 不会再推给你');
@@ -1165,7 +1382,7 @@ document.getElementById('restoreRemovedBtn').addEventListener('click', () => {
 /* 复制待重做清单：发给总包登记。格式里带账号、pid、套号、时间，总包粘贴到 master.html 解析即可。
    v1.0.29：用 redoState 里存的套号（不要按 pid 去队里现找，队重排后会张冠李戴）。 */
 function copyRedoList(btn) {
-  const pids = Object.keys(redoState).filter(pid => !doneState[pid]);
+  const pids = Object.keys(redoState).filter(pid => !isRedoResolvedByDone(pid, redoState[pid]));
   const imgItems = [];
   Object.keys(redoImgState).forEach(pid => {
     const e = redoImgState[pid];
@@ -1191,7 +1408,7 @@ function copyRedoList(btn) {
 /* v1.0.29：推送待重做给总包——直接调 pushStateToChannel 推上 Firebase，不用再复制粘贴。
    成功显示回执，失败可点重试；复制文字只留作没网时的兜底。 */
 function pushRedoToMaster(btn) {
-  const wholeN = Object.keys(redoState).filter(pid => !doneState[pid]).length;
+  const wholeN = Object.keys(redoState).filter(pid => !isRedoResolvedByDone(pid, redoState[pid])).length;
   const imgN = Object.keys(redoImgState).reduce((acc, pid) => acc + Object.keys((redoImgState[pid] || {}).images || {}).length, 0);
   if (!wholeN && !imgN) { toast('没有待重做的品'); return; }
   btn.disabled = true;
@@ -1229,77 +1446,92 @@ function copyText(text, btn, okLabel) {
 }
 
 /* ================= 刷新 · 拉下一组 =================
-   做完当前这 10 套后点顶部刷新：按产品顺序（set_no）取接下来 10 个，
-   跳过：已在手里的、自己做完的、自己重做的、自己移除的、总包说别的账号手里/已做完/待重做的（链接 x 参数）。
-   拉到的新组会写进链接（replaceState），刷新页面也不丢。 */
-function refreshBatch() {
+   v1.0.30：防重入异步流程：先对当前屏幕 prevShown 检查未做完并提交同步，
+   再只把刚才屏幕上看过的 prevShown 记进 autoSeen，接着拉云端最新队（自动热刷 products.json），
+   如遇空组则容忍总包 5 秒补货周期等待重拉。 */
+function delayMs(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+async function refreshBatch() {
   if (!PRODUCTS.length) { toast('产品库还没加载好，稍等一下再点'); return; }
-  // v1.0.25：先提交并等服务器确认，再拉下一组（GPT 重设计 §5.2）。
-  // 旧版 pushStateToChannel 发出去就不等，总包还没收到刚做完的信息，手机已经拿下一组了。
-  pushStateToChannel().then(synced => {
+  if (isRefreshing) return;
+  const rBtn = document.getElementById('refreshBtn');
+  isRefreshing = true;
+  if (rBtn) { rBtn.disabled = true; rBtn.textContent = '拉取中…'; }
+  try {
+    const prevShown = currentAssigned.slice();
+    const unfinished = prevShown.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
+    if (unfinished > 0) {
+      const msg = AUTO_MODE
+        ? '这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会被跳过（之后找总包要新链接可以重新拿到）。'
+        : '这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会回到总包的待派送池子，之后再派。';
+      if (!confirm(msg)) return;
+    }
+    const synced = await pushStateToChannel();
     updateSyncLine();
     if (!synced) { toast('状态尚未同步成功，暂不能领取下一组，请检查网络后重试'); return; }
     if (AUTO_MODE) {
-      fetchQueueFromFirebase().then(res => {
-        if (res === 'error') { toast('拉取总包最新队失败，请检查网络后重试（不要用旧队领任务）'); return; }
-        if (res === 'empty') { toast('总包队是空的，补货后重新点「拉下一组」'); return; }
-        doRefresh();
-      });
-    } else {
-      doRefresh();
-    }
-  });
-  const doRefresh = () => {
-  if (AUTO_MODE) {
-    // 自动模式：直接从队里拿接下来 10 个未消费的套，不用总包再发链接
-    const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
-    if (unfinished > 0) {
-      if (!confirm('这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会被跳过（之后找总包要新链接可以重新拿到）。')) return;
-    }
-    const justSkipped = new Set(currentAssigned.map(p => p.set_no));
-    currentAssigned.forEach(p => autoSeen.add(p.set_no));
-    saveAutoSeen();
-    currentAssigned = computeAutoBatch();
-    if (!currentAssigned.length) {
-      // v1.0.28：队空自动补货——先去 Firebase 拉总包最新队（可能刚补了货），刚跳过的这组不放出来
-      refillAutoBatchIfEmpty(justSkipped).then(ok => {
-        if (!ok) {
+      const justSkipped = new Set(prevShown.map(p => p.set_no));
+      prevShown.forEach(p => autoSeen.add(p.set_no));
+      saveAutoSeen();
+
+      let res = await fetchQueueFromFirebase();
+      if (res === 'error') { toast('拉取总包最新队失败，请检查网络后重试（不要用旧队领任务）'); return; }
+      let nextBatch = (res === 'ok') ? computeAutoBatch() : [];
+      if (!nextBatch.length) {
+        for (const ms of REFILL_RETRY_DELAYS) {
+          await delayMs(ms);
+          res = await fetchQueueFromFirebase();
+          if (res === 'ok') {
+            nextBatch = computeAutoBatch();
+            if (nextBatch.length) break;
+          }
+        }
+      }
+      if (!nextBatch.length) {
+        if (res === 'empty') {
+          currentAssigned = [];
+          render(currentAssigned);
+          scheduleEmptyRecheck();
+          toast('总包队是空的，补货后会自动再拉');
+          return;
+        }
+        const refilled = await refillAutoBatchIfEmpty(justSkipped);
+        if (!refilled) {
+          currentAssigned = [];
           render(currentAssigned);
           toast('这条队的货发完了，总包补货后重新点「拉下一组」');
         }
-      });
+        return;
+      }
+      clearEmptyRecheck();
+      currentAssigned = nextBatch;
+      render(currentAssigned);
+      window.scrollTo(0, 0);
+      toast('已拉到下一组：' + currentAssigned.length + ' 套');
       return;
     }
+    const currentSetNos = new Set(prevShown.map(p => p.set_no));
+    const next = [];
+    for (const p of PRODUCTS) {
+      if (next.length >= BATCH) break;
+      if (currentSetNos.has(p.set_no)) continue;
+      if (EXCLUDED_SETS.has(p.set_no)) continue;
+      if (isDone(p)) continue;
+      if (isRedo(p)) continue;
+      if (removedState[p.set_no]) continue;
+      next.push(p);
+    }
+    if (!next.length) { toast('没有新的品了，池子空了'); return; }
+    currentAssigned = next;
+    const u = new URL(location.href);
+    u.searchParams.set('s', next.map(p => p.set_no).join(','));
+    history.replaceState(null, '', u);
     render(currentAssigned);
     window.scrollTo(0, 0);
-    toast('已拉到下一组：' + currentAssigned.length + ' 套');
-    return;
+    toast('已拉到下一组：' + next.length + ' 套');
+  } finally {
+    isRefreshing = false;
+    if (rBtn) { rBtn.disabled = false; rBtn.textContent = '🔄 拉下一组（10 套）'; }
   }
-  const unfinished = currentAssigned.filter(p => !isDone(p) && !isRedo(p) && !removedState[p.set_no]).length;
-  if (unfinished > 0) {
-    if (!confirm('这组还有 ' + unfinished + ' 套没做完，确定要拉下一组吗？\n没做完的会回到总包的待派送池子，之后再派。')) return;
-  }
-  const currentSetNos = new Set(currentAssigned.map(p => p.set_no));
-  const next = [];
-  for (const p of PRODUCTS) {
-    if (next.length >= BATCH) break;
-    if (currentSetNos.has(p.set_no)) continue;
-    if (EXCLUDED_SETS.has(p.set_no)) continue;
-    if (isDone(p)) continue;
-    if (isRedo(p)) continue;
-    if (removedState[p.set_no]) continue;
-    next.push(p);
-  }
-  if (!next.length) { toast('没有新的品了，池子空了'); return; }
-  currentAssigned = next;
-  const u = new URL(location.href);
-  u.searchParams.set('s', next.map(p => p.set_no).join(','));
-  history.replaceState(null, '', u);
-  render(currentAssigned);
-  window.scrollTo(0, 0);
-  toast('已拉到下一组：' + next.length + ' 套');
-  };
-  // v1.0.25：拉队逻辑已移到开头的 pushStateToChannel().then 里（先同步成功、再拉队、再算下一组）。
 }
 document.getElementById('refreshBtn').addEventListener('click', refreshBatch);
 
@@ -1328,17 +1560,26 @@ document.getElementById('submitBtn').addEventListener('click', function () {
    v1.0.29：套号一律用存下来的（doneState[pid] / redoState[pid].set_no / redoImgState[pid].set_no），
    不要按 pid 去产品库现找第一套——同 pid 两套时找错套。 */
 function copyStatus(btn) {
-  const donePids = Object.keys(doneState);
+  const doneLines = [];
+  Object.keys(doneState).forEach(pid => {
+    const v = doneState[pid];
+    if (typeof v === 'number') {
+      doneLines.push('- pid ' + pid + '（第' + v + '套）');
+    } else if (Array.isArray(v)) {
+      v.forEach(sn => {
+        if (typeof sn === 'number') doneLines.push('- pid ' + pid + '（第' + sn + '套）');
+      });
+    } else if (v) {
+      const p = PRODUCTS.find(x => String(x.pid) === pid);
+      doneLines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : ''));
+    }
+  });
   const redoPids = Object.keys(redoState);
   const redoImgPids = Object.keys(redoImgState);
-  if (!donePids.length && !redoPids.length && !redoImgPids.length) { toast('本机还没有已做完或待重做的品'); return; }
+  if (!doneLines.length && !redoPids.length && !redoImgPids.length) { toast('本机还没有已做完或待重做的品'); return; }
   const lines = [ACCT_NAME + ' 状态同步'];
-  lines.push('已做完（' + donePids.length + '）：');
-  donePids.forEach(pid => {
-    const setNo = (typeof doneState[pid] === 'number') ? doneState[pid] : null;
-    const p = setNo == null ? PRODUCTS.find(x => String(x.pid) === pid) : null;
-    lines.push('- pid ' + pid + (setNo != null ? '（第' + setNo + '套）' : (p ? '（第' + p.set_no + '套）' : '')));
-  });
+  lines.push('已做完（' + doneLines.length + '）：');
+  doneLines.forEach(l => lines.push(l));
   lines.push('待重做（' + redoPids.length + '）：');
   redoPids.forEach(pid => {
     const info = redoState[pid] || {};
@@ -1356,10 +1597,17 @@ function copyStatus(btn) {
   });
   copyText(lines.join('\n'), btn, '已复制，去发给总包');
 }
-/* v1.0.29：一键同步本机状态——直接调 pushStateToChannel 推全部已做完+待重做上 Firebase，
-   和顶上「提交给总包」是同一个通道；复制文字只留作没网时的兜底。 */
+function countDoneSetsLocal() {
+  let n = 0;
+  Object.keys(doneState).forEach(pid => {
+    const v = doneState[pid];
+    if (Array.isArray(v)) n += v.length;
+    else if (v) n += 1;
+  });
+  return n;
+}
 function pushStatusToMaster(btn) {
-  const doneN = Object.keys(doneState).length;
+  const doneN = countDoneSetsLocal();
   const redoN = Object.keys(redoState).length;
   const imgN = Object.keys(redoImgState).reduce((acc, pid) => acc + Object.keys((redoImgState[pid] || {}).images || {}).length, 0);
   if (!doneN && !redoN && !imgN) { toast('本机还没有已做完或待重做的品'); return; }
@@ -1466,14 +1714,17 @@ function refillAutoBatchIfEmpty(keepSkipped) {
   if (computeAutoBatch().length) return Promise.resolve(false);
   return fetchQueueFromFirebase().then(res => {
     if (res === 'error') { toast('同步总包最新派单失败，请检查网络后刷新'); scheduleEmptyRecheck(); return false; }
-    if (res === 'empty') { scheduleEmptyRecheck(); return false; } // 总包队真是空的，等补货（定时再拉）
-    // 拉到新队：放出 autoSeen 里已在新队里的套（总包重排/重派回来的套要能重新出现）
-    let changed = false;
-    AUTO_QUEUE.forEach(n => {
-      if (autoSeen.has(n) && !(keepSkipped && keepSkipped.has(n))) { autoSeen.delete(n); changed = true; }
-    });
-    if (changed) saveAutoSeen();
+    if (res === 'empty') { scheduleEmptyRecheck(); return false; }
+    // 先检查新队里是否已经有未被 autoSeen 吃掉的新品，避免误释放先前跳过的旧套
     currentAssigned = computeAutoBatch();
+    if (!currentAssigned.length) {
+      let changed = false;
+      AUTO_QUEUE.forEach(n => {
+        if (autoSeen.has(n) && !(keepSkipped && keepSkipped.has(n))) { autoSeen.delete(n); changed = true; }
+      });
+      if (changed) saveAutoSeen();
+      currentAssigned = computeAutoBatch();
+    }
     if (currentAssigned.length) {
       clearEmptyRecheck();
       render(currentAssigned);
@@ -1492,10 +1743,8 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
     : '这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
   renderStats([]);
 } else {
-  fetch('products.json?v=' + APP_VERSION)
-    .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
-    .then(data => {
-      PRODUCTS = data;
+  fetchProductsFresh()
+    .then(() => {
       if (AUTO_MODE) {
         setupAutoQueue();
         const missing = AUTO_QUEUE.length - autoQueueProducts.length;
@@ -1507,24 +1756,22 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
         const hint = document.querySelector('.refresh-bar .hint');
         if (hint) hint.textContent = '自动派单：做完先点“提交给总包”，再点“拉下一组”拿下一组，不用等总包发链接';
-        // 先从 Firebase 拿总包算好的最新队，再渲染——不要先渲染链接旧队的残影。
-        // 旧逻辑是先渲染链接队、等 Firebase 回来再重算，链接队过期时用户会先看到不属于自己的套
-        // （比如已不在队里的 43 套闪一下又消失，2026-11-22 3 号实测）。fetch 失败也会 resolve，不会卡住。
         document.getElementById('list').innerHTML = '<div class="empty" style="display:block">正在同步总包最新派单…</div>';
-        // v1.0.25：fetchQueue 返回 'ok'/'empty'/'error'。'empty' = 服务器确认队是空的，旧链接的 q 不能复活；
-        // 'error' = 网络失败，显示提示后用链接队兜底渲染（用户是打开链接进来的），但不把它当新队。
-        fetchQueueFromFirebase().then(res => {
+        // 先合并同步本机与云端状态（含找回总包恢复的记录），再拉总包最新队渲染
+        return pushStateToChannel().then(() => {
+          updateSyncLine();
+          return fetchQueueFromFirebase();
+        }).then(res => {
           if (res === 'empty') {
             currentAssigned = [];
             render(currentAssigned);
             toast('总包队是空的，等总包补货（会自动再拉，不用重开链接）');
-            scheduleEmptyRecheck(); // v1.0.28：空队时自动等补货，不用手动重开
+            scheduleEmptyRecheck();
             return;
           }
           if (res === 'error') toast('同步总包最新派单失败，显示的是链接里的旧队，请检查网络后刷新');
           currentAssigned = computeAutoBatch();
           render(currentAssigned);
-          // v1.0.28：队空自动补货——当前这组没可做的套了，自动拉总包最新队
           if (!currentAssigned.length) {
             refillAutoBatchIfEmpty().then(ok => {
               if (!ok) { render(currentAssigned); toast('这条队暂时没有可做的套，等总包补货（会自动再拉）'); }
@@ -1541,9 +1788,8 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         }
         if (missing > 0) toast('有 ' + missing + ' 套不在产品库中，已跳过');
         render(currentAssigned);
+        return pushStateToChannel().then(updateSyncLine);
       }
-      // 打开页面就把本机已有的已做完/待重做推给总包（补推之前攒下的状态）
-      pushStateToChannel().then(updateSyncLine);
     })
     .catch(e => {
       showError('products.json 读取失败：请用部署后的网址打开（不要直接双击文件），或检查 products.json 是否在同一目录。');
