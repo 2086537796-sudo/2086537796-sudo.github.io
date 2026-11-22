@@ -249,7 +249,8 @@
   ],
   "zip": "第16套.zip",
   "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70on1PBdhV",
-  "ref": "主图.jpg"
+  "ref": "主图.jpg",
+  "retired": true
  },
  {
   "set_no": 17,
@@ -377,7 +378,8 @@
   ],
   "zip": "第24套.zip",
   "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK6KwphlzPfF",
-  "ref": "主图.jpg"
+  "ref": "主图.jpg",
+  "retired": true
  },
  {
   "set_no": 25,
@@ -633,7 +635,8 @@
   ],
   "zip": "第40套.zip",
   "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5c2f5SYWWt",
-  "ref": "主图.jpg"
+  "ref": "主图.jpg",
+  "retired": true
  },
  {
   "set_no": 41,
@@ -1017,7 +1020,8 @@
   ],
   "zip": "第64套.zip",
   "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK5nF6g7vo4n",
-  "ref": "主图.jpg"
+  "ref": "主图.jpg",
+  "retired": true
  },
  {
   "set_no": 65,
@@ -1789,7 +1793,8 @@
   ],
   "zip": "第112套.zip",
   "cart_url": "https://affiliate-us.tiktok.com/api/v1/share/AK70mIifeIbU",
-  "ref": "主图.jpg"
+  "ref": "主图.jpg",
+  "retired": true
  },
  {
   "set_no": 113,
