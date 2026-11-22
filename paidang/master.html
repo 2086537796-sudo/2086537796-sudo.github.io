@@ -124,7 +124,7 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.28 · 2026-11-22 · 如果这里显示的不是 v1.0.28，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.29 · 2026-11-22 · 如果这里显示的不是 v1.0.29，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <div id="bootBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;"></div>
@@ -267,7 +267,7 @@ const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, im
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
 const LS_SHRINK_WARNED = 'paidang_shrink_warned'; // v1.0.26：{ accountId: "master-incoming" } —— 缩水警告已弹过，同样数字不再重复弹（刷新页面也不重弹）
 const LS_SHRINK_RESTORED = 'paidang_shrink_restored'; // v1.0.26：{ accountId: timestamp } —— 上次把总包记录写回 Firebase 帮手机恢复的时间，5 分钟节流
-const APP_VERSION = 'v1.0.28';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.29';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* v1.0.26 热修复（已上线）：页头版本从 APP_VERSION 动态填（之前写死 v1.0.25，升版漏改，用户刷新后还以为没更新）。
    + 版本检测——页面加载时用 cache-busting 读一次线上本页的 APP_VERSION，
@@ -514,6 +514,7 @@ function fmtTime(ts) {
   const p = x => String(x).padStart(2, '0');
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
+function fmtHM(ts) { const d = new Date(ts); const p = x => String(x).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()); }
 function acctName(id) {
   const a = ACCOUNTS.find(x => x.id === id);
   return a ? a.name : ('账号 ' + id);
@@ -1356,7 +1357,7 @@ function renderRedo() {
     div.className = 'redo-item';
     const t = document.createElement('div');
     t.className = 't';
-    t.textContent = fmtTime(r.time) + ' · ' + acctName(r.account) + ' · ' + (r.status === 'returned' ? '重做完成，已回待派送池子' : '待重做');
+    t.textContent = fmtTime(r.time) + ' · ' + acctName(r.account) + ' · ' + (r.status === 'returned' ? '重做完成，已回待派送池子' : '待重做') + ' · 已收到 ' + fmtHM(r.receivedAt || r.time);
     const main = document.createElement('div');
     main.textContent = '第' + (r.set_no || '?') + '套 · ' + (r.title_cn || (p ? p.title_cn : '')) + '（pid: ' + r.pid + '）' + (r.note ? ' · ' + r.note : '');
     const reasonStr = reasonsText(r.reasons);
@@ -1418,7 +1419,7 @@ function renderRedoImg() {
     div.className = 'redo-item';
     const t = document.createElement('div');
     t.className = 't';
-    t.textContent = fmtTime(r.time) + ' · ' + acctName(r.account) + ' · 第' + r.set_no + '套图' + r.img + '（' + r.fn + '）';
+    t.textContent = fmtTime(r.time) + ' · ' + acctName(r.account) + ' · 第' + r.set_no + '套图' + r.img + '（' + r.fn + '）' + ' · 已收到 ' + fmtHM(r.receivedAt || r.time);
     const main = document.createElement('div');
     main.className = 'main';
     main.textContent = r.title_cn + ' · pid ' + r.pid;
@@ -1693,7 +1694,7 @@ function syncFromText(text) {
     const meta = redoMeta[pid] || { reasons: [], note: '' };
     const existing = redoEntry(pid, account);
     if (!existing) {
-      redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: meta.note, status: 'pending', reasons: meta.reasons });
+      redoList.push({ pid: pid, account: account, set_no: p.set_no, title_cn: p.title_cn, time: Date.now(), note: meta.note, status: 'pending', reasons: meta.reasons, receivedAt: Date.now() });
       nRedo++;
     } else if (existing.status === 'pending') {
       // 已有待重做：补上这次带来的理由和备注
@@ -1912,6 +1913,8 @@ function applyPhoneState(accountId, data) {
         ex.reasons = r.reasons || ex.reasons || [];
         ex.note = r.note || ex.note || '';
       } else {
+        // v1.0.29：工人重新打回（标记时间变了）= 总包这次刚收到，盖收到时间戳
+        if (r.time && r.time !== ex.time) ex.receivedAt = Date.now();
         ex.status = 'pending';
         ex.set_no = r.set_no || ex.set_no;
         ex.title_cn = r.title_cn || ex.title_cn;
@@ -1922,7 +1925,8 @@ function applyPhoneState(accountId, data) {
         if (!wasPending) nRedo++;
       }
     } else {
-      redoList.push({ pid: pid, account: accountId, set_no: r.set_no, title_cn: r.title_cn, time: r.time || Date.now(), note: r.note || '', status: 'pending', reasons: r.reasons || [] });
+      // v1.0.29：总包第一次收到这条重做，盖收到时间戳（重做列表显示“已收到 HH:MM”）
+      redoList.push({ pid: pid, account: accountId, set_no: r.set_no, title_cn: r.title_cn, time: r.time || Date.now(), note: r.note || '', status: 'pending', reasons: r.reasons || [], receivedAt: Date.now() });
       nRedo++;
     }
   });
@@ -1939,6 +1943,8 @@ function applyPhoneState(accountId, data) {
     const imgNo = parseInt(x.img, 10);
     const ex = redoImgList.find(r => String(r.pid) === pid && r.account === accountId && parseInt(r.img, 10) === imgNo);
     if (ex) {
+      // v1.0.29：工人重新打回（标记时间变了）= 总包这次刚收到，盖收到时间戳
+      if (x.time && x.time !== ex.time) ex.receivedAt = Date.now();
       ex.set_no = x.set_no || ex.set_no;
       ex.title_cn = x.title_cn || ex.title_cn;
       ex.fn = x.fn || ex.fn;
@@ -1946,7 +1952,7 @@ function applyPhoneState(accountId, data) {
       ex.note = x.note || '';
       ex.time = x.time || ex.time;
     } else {
-      redoImgList.push({ pid: pid, account: accountId, set_no: x.set_no, title_cn: x.title_cn, img: imgNo, fn: x.fn || '', reasons: x.reasons || [], note: x.note || '', time: x.time || Date.now() });
+      redoImgList.push({ pid: pid, account: accountId, set_no: x.set_no, title_cn: x.title_cn, img: imgNo, fn: x.fn || '', reasons: x.reasons || [], note: x.note || '', time: x.time || Date.now(), receivedAt: Date.now() });
       nRedoImg++;
     }
   });
