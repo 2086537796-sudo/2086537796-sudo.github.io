@@ -124,10 +124,11 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" style="color:#999;">版本 v1.0.25 · 2026-11-22 · 如果这里显示的不是 v1.0.25，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.26 · 2026-11-22 · 如果这里显示的不是 v1.0.26，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <div id="bootBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;"></div>
+<div id="versionBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;">检测到新版本，请刷新页面（不要用旧页面继续操作，旧页面写的数据格式可能和新版不一致）。</div>
 
 <main>
   <!-- 派单模式切换 -->
@@ -267,6 +268,41 @@ const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } }
 const LS_SHRINK_WARNED = 'paidang_shrink_warned'; // v1.0.26：{ accountId: "master-incoming" } —— 缩水警告已弹过，同样数字不再重复弹（刷新页面也不重弹）
 const LS_SHRINK_RESTORED = 'paidang_shrink_restored'; // v1.0.26：{ accountId: timestamp } —— 上次把总包记录写回 Firebase 帮手机恢复的时间，5 分钟节流
 const APP_VERSION = 'v1.0.26';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+
+/* v1.0.27 热修复：页头版本从 APP_VERSION 动态填（之前写死 v1.0.25，升版漏改，用户刷新后还以为没更新）。
+   + 版本检测——页面加载时用 cache-busting 读一次线上本页的 APP_VERSION，
+   发现运行版本落后就弹横幅提示刷新，不要让旧页面继续写新格式。
+   读不到（断网/失败）时静默跳过，不挡正常使用。 */
+function parseVer(v) {
+  const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)] : [0, 0, 0];
+}
+function isNewerVer(a, b) {
+  const x = parseVer(a), y = parseVer(b);
+  for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] > y[i]; }
+  return false;
+}
+function checkVersion() {
+  const line = document.getElementById('versionLine');
+  if (line) line.textContent = '版本 ' + APP_VERSION + ' · 2026-11-22 · 如果这里显示的不是 ' + APP_VERSION + '，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开';
+  try {
+    const url = location.pathname + '?_vc=' + Date.now();
+    fetch(url, { cache: 'no-store' })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(text => {
+        const m = text.match(/APP_VERSION\s*=\s*'([^']+)'/);
+        if (m && isNewerVer(m[1], APP_VERSION)) {
+          const b = document.getElementById('versionBanner');
+          if (b) {
+            b.style.display = 'block';
+            b.textContent = '检测到新版本 ' + m[1] + '（当前页面是 ' + APP_VERSION + '），请刷新页面再操作。旧页面写的数据格式可能和新版不一致。';
+          }
+        }
+      })
+      .catch(() => {});
+  } catch (e) {}
+}
+checkVersion();
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
