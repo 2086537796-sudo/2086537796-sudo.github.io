@@ -264,7 +264,9 @@ const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pi
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
-const APP_VERSION = 'v1.0.25';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const LS_SHRINK_WARNED = 'paidang_shrink_warned'; // v1.0.26：{ accountId: "master-incoming" } —— 缩水警告已弹过，同样数字不再重复弹（刷新页面也不重弹）
+const LS_SHRINK_RESTORED = 'paidang_shrink_restored'; // v1.0.26：{ accountId: timestamp } —— 上次把总包记录写回 Firebase 帮手机恢复的时间，5 分钟节流
+const APP_VERSION = 'v1.0.26';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -1528,6 +1530,26 @@ function updatePullStatus() {
     det.textContent = '各手机最新状态：' + parts.join(' ｜ ');
   }
 }
+/* v1.0.26：手机本机状态丢了（推来完全空包），把总包存的该号记录写回 Firebase，帮手机恢复。
+   只写总包已有的并集，不删任何记录；手机 v1.0.25 合并写会先 GET 再并集，不会丢它自己的新记录。
+   注意：总包的 redoList 不存 images（只存 pid/套号/标题/时间/原因/备注），恢复后单张重做的图片选择会丢，
+   重做标记本身（哪个 pid 要重做）不会丢。 */
+function restorePhoneStateToFirebase(accountId) {
+  const done = Object.keys(doneMap)
+    .filter(pid => doneMap[pid].account === accountId)
+    .map(pid => ({ pid: pid, set_no: (doneMap[pid].set_no != null ? doneMap[pid].set_no : null) }));
+  const redos = redoList
+    .filter(r => r.account === accountId)
+    .map(r => ({ pid: r.pid, set_no: r.set_no, title_cn: r.title_cn, time: r.time, reasons: r.reasons || [], note: r.note || '', images: r.images || [] }));
+  const redosImg = redoImgList
+    .filter(r => r.account === accountId)
+    .map(r => ({ pid: r.pid, set_no: r.set_no, title_cn: r.title_cn, img: r.img, fn: r.fn || '', reasons: r.reasons || [], note: r.note || '', time: r.time }));
+  const payload = { account: accountId, updated: Date.now(), done: done, redos: redos, redos_img: redosImg };
+  fetch(SYNC_BASE + accountId + '.json', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(payload) })
+    .then(r => { if (r.ok) toast(accountId + ' 号手机状态丢了，已把总包存的 ' + (done.length + redos.length + redosImg.length) + ' 条记录写回云端，手机下次同步会恢复。'); })
+    .catch(() => {});
+}
+
 function applyPhoneState(accountId, data) {
   if (!data || typeof data !== 'object') return { done: 0, redo: 0 };
   let nDone = 0, nRedo = 0, nRedoImg = 0;
@@ -1556,11 +1578,34 @@ function applyPhoneState(accountId, data) {
   const incomingCount = phoneDone.size + phoneRedos.size + phoneRedoImgs.length;
   const shrinkConflict = masterCount > 0 && incomingCount < masterCount / 2;
   if (shrinkConflict) {
-    const prev = shrinkConflicts[String(accountId)];
     shrinkConflicts[String(accountId)] = { master: masterCount, incoming: incomingCount, time: Date.now() };
-    if (!prev) toast('注意：' + accountId + ' 号手机推来的状态比总包少了一半以上（总包 ' + masterCount + ' 条，手机 ' + incomingCount + ' 条），疑似另一个浏览器在覆盖，已先保留总包记录，请检查该号是不是在两个浏览器里同时开着。');
+    // v1.0.26：同一个差异只弹一次警告（签名存 localStorage，刷新页面不再重复弹；数字变了才再弹）。
+    // 之前 shrinkConflicts 只在内存里，刷新页面就清零，所以 4 号这种“手机状态丢了、总包还留着记录”的
+    // 已知差异每次重开页面都再弹一次，看着像误报。
+    const sig = masterCount + '-' + incomingCount;
+    const warned = loadJSON(LS_SHRINK_WARNED, {});
+    if (warned[String(accountId)] !== sig) {
+      warned[String(accountId)] = sig;
+      saveJSON(LS_SHRINK_WARNED, warned);
+      toast('注意：' + accountId + ' 号手机推来的状态比总包少了一半以上（总包 ' + masterCount + ' 条，手机 ' + incomingCount + ' 条），疑似另一个浏览器在覆盖，已先保留总包记录，请检查该号是不是在两个浏览器里同时开着。');
+    }
+    // v1.0.26：手机推来的是完全空包（不是少一半，是 0 条）——几乎一定是手机换了浏览器/清了缓存把本机状态丢了，
+    // 不是分脑。把总包存的记录写回 Firebase 帮手机恢复；手机下次同步（v1.0.25 合并写）会把这份状态捡回来，
+    // 差异自己解开，警告也就不再出现。5 分钟内同一个号只恢复一次，防旧版手机整包覆盖回来回拉锯。
+    if (incomingEmpty && masterHasAcct) {
+      const restored = loadJSON(LS_SHRINK_RESTORED, {});
+      const lastT = restored[String(accountId)] || 0;
+      if (Date.now() - lastT > 5 * 60 * 1000) {
+        restored[String(accountId)] = Date.now();
+        saveJSON(LS_SHRINK_RESTORED, restored);
+        restorePhoneStateToFirebase(accountId);
+      }
+    }
   } else {
     delete shrinkConflicts[String(accountId)];
+    // 差异解开了，清掉已弹警告的签名，下次再有新差异会重新弹
+    const warned = loadJSON(LS_SHRINK_WARNED, {});
+    if (warned[String(accountId)]) { delete warned[String(accountId)]; saveJSON(LS_SHRINK_WARNED, warned); }
   }
   const skipDeleteAlign = (incomingEmpty && masterHasAcct) || shrinkConflict;
   // 已做完：以格子为准整批对齐（该号的）
