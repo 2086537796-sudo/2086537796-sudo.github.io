@@ -243,6 +243,7 @@ const EXCLUDED_SETS = new Set((params.get('x') || '').split(',').map(x => parseI
    队以 Firebase 上的为准（总包算好队就推上来）；链接里的 q 只是初始队，Firebase 没队时才用它。 */
 const AUTO_MODE = params.get('auto') === '1';
 let AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
+const LINK_Q = (params.get('q') || ''); // v1.0.24：链接本身的 q（打开链接时就定死，之后 Firebase 队怎么变它都不变）
 /* 从 Firebase 拉本号最新队（总包每 5 秒推一次）。返回 true 表示队变了。 */
 function fetchQueueFromFirebase() {
   if (!AUTO_MODE) return Promise.resolve(false);
@@ -1253,12 +1254,12 @@ function computeAutoBatch() {
   return batch;
 }
 function setupAutoQueue() {
-  // 链接换了（q 变了）：用新队，并清空“已跳过”记录（从队首未消费的重新开始；已做完/待重做按 pid 记，不会丢）
+  // 只有链接本身换了（q 参数变了）才清空“已跳过”记录；Firebase 队变了不清空——
+  // 总包每几分钟推一次队，队一变就清空会导致跳过的套从队首重现（v1.0.24 修，旧版拿 Firebase 队跟存量比，队一变就清）。
   let storedQ = '';
   try { storedQ = localStorage.getItem(LS_AUTO_Q) || ''; } catch (e) {}
-  const curQ = AUTO_QUEUE.join(',');
-  if (storedQ !== curQ) {
-    try { localStorage.setItem(LS_AUTO_Q, curQ); } catch (e) {}
+  if (storedQ !== LINK_Q) {
+    try { localStorage.setItem(LS_AUTO_Q, LINK_Q); } catch (e) {}
     autoSeen = new Set();
     saveAutoSeen();
   } else {
@@ -1284,7 +1285,7 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
     : '这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
   renderStats([]);
 } else {
-  fetch('products.json?v=1.0.18')
+  fetch('products.json?v=1.0.24')
     .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
     .then(data => {
       PRODUCTS = data;
