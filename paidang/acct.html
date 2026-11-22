@@ -150,7 +150,7 @@
   </div>
   <div class="hint">做完先点“提交给总包”，把已做完和待重做发给总包；要继续做就点“拉下一组”，跳过已做完/已重做的，拿接下来没做过的 10 套</div>
   <div class="sync-line" id="syncLine"></div>
-  <div class="sync-line" id="versionLine" style="color:#bbb;">子工作台 v1.0.28 · 2026-11-22</div>
+  <div class="sync-line" id="versionLine" style="color:#bbb;">子工作台 v1.0.29 · 2026-11-22</div>
 </div>
 
 <header>
@@ -182,12 +182,14 @@
   <details id="redoListBox" class="done-list" hidden>
     <summary id="redoListSummary">待重做（0 套）· 点开查看</summary>
     <ul id="redoList"></ul>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <button id="copyRedoBtn" type="button" style="flex:1;height:40px;border-radius:8px;font-size:14px;border:1px solid #e8590c;background:#fff;color:#e8590c;">复制待重做清单发给总包</button>
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+      <button id="copyRedoBtn" type="button" style="flex:1;height:40px;border-radius:8px;font-size:14px;border:1px solid #e8590c;background:#fff;color:#e8590c;">推送待重做给总包</button>
+      <button id="copyRedoTextBtn" type="button" style="border:none;background:none;color:#888;font-size:12px;text-decoration:underline;padding:0;white-space:nowrap;">复制文字备用</button>
     </div>
   </details>
-  <button id="copyStatusBtn" type="button" style="display:block;width:100%;height:48px;border-radius:10px;font-size:16px;font-weight:700;border:1px solid #e8590c;background:#fff;color:#e8590c;margin-top:4px;">复制本机状态（已做完 + 待重做）发给总包</button>
-  <div style="font-size:12px;color:#888;text-align:center;margin-top:6px;line-height:1.7;">做完一组后点一下，把本机全部已做完和待重做的 pid 复制发给总包；<br>总包粘贴同步后，就知道哪些做完了、哪些要重做，不会再重复派。</div>
+  <button id="copyStatusBtn" type="button" style="display:block;width:100%;height:48px;border-radius:10px;font-size:16px;font-weight:700;border:1px solid #e8590c;background:#fff;color:#e8590c;margin-top:4px;">一键同步本机状态</button>
+  <div style="text-align:center;margin-top:4px;"><button id="copyStatusTextBtn" type="button" style="border:none;background:none;color:#888;font-size:12px;text-decoration:underline;padding:0;">复制文字备用</button></div>
+  <div style="font-size:12px;color:#888;text-align:center;margin-top:6px;line-height:1.7;">点一下直接把本机状态推给总包，和顶上「提交给总包」是同一个通道，不用复制粘贴；<br>没网、推不上去时才点「复制文字备用」，把文字发给总包粘贴同步。</div>
 </main>
 
 <footer>
@@ -235,7 +237,7 @@ const ASSIGNED_SETS = (params.get('s') || '')
   .split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n) && n > 0);
 const ACCT_NAME = (ACCOUNTS.find(a => a.id === ACCT_ID) || {}).name || ('账号 ' + (ACCT_ID || '?'));
 const BATCH = 10;               // 每组拉 10 个
-const APP_VERSION = 'v1.0.28'; // 页面版本（显示在页头；与 master.html 统一管理，发现线上更新时提示刷新）
+const APP_VERSION = 'v1.0.29'; // 页面版本（显示在页头；与 master.html 统一管理，发现线上更新时提示刷新）
 const EMPTY_RECHECK_MS = 60000; // v1.0.28：队空时自动等补货，每 60 秒重新拉一次总包最新队
 /* 刷新时要跳过的 set_no：总包在链接里带的（?x=），别的账号手里的 + 已做完 + 待重做的（防重复）。
    没有 x 参数的旧链接也能打开，刷新时只按本机已做完/已重做过滤。 */
@@ -427,11 +429,17 @@ function fmtTime(ts) {
 }
 function bySetNo(n) { return PRODUCTS.find(p => p.set_no === n); }
 function isDone(p) { return !!doneState[String(p.pid)]; }
-function isRedo(p) { return !!redoState[String(p.pid)]; }
+// v1.0.29：重做按套判，不按 pid 判——替代套（同一 pid、不同 set_no）不再被当成重做。
+// 之前按 pid 判：5 号队里 5 套替代套（128/137/146/142/105）被当成待重做藏起来，还剩 0 套。
+function isRedo(p) {
+  const info = redoState[String(p.pid)];
+  return !!info && info.set_no === p.set_no;
+}
+function fmtHM(ts) { const d = new Date(ts); const p = x => String(x).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()); }
 function imgURL(p, fn) { return enc(IMG_BASE + p.folder + '/' + fn); }
 function isRedoImg(p, imgNo) {
   const e = redoImgState[String(p.pid)];
-  return !!(e && e.images && e.images[imgNo]);
+  return !!(e && e.images && e.images[imgNo] && e.set_no === p.set_no);
 }
 /* 单张重做标记过期清理：那张图的文件名变了（已换成 v2），说明已修好，清掉标记。 */
 function pruneStaleImgRedos() {
@@ -440,7 +448,8 @@ function pruneStaleImgRedos() {
   Object.keys(redoImgState).forEach(pid => {
     const e = redoImgState[pid];
     if (!e || !e.images) return;
-    const p = PRODUCTS.find(x => String(x.pid) === pid);
+    // v1.0.29：按存的 set_no 找产品（同 pid 两套的文件名可能不同，按 pid 找会找错套）
+    const p = (e.set_no != null) ? bySetNo(e.set_no) : PRODUCTS.find(x => String(x.pid) === pid);
     Object.keys(e.images).forEach(imgNo => {
       const im = e.images[imgNo];
       const curFn = p ? p.images[parseInt(imgNo, 10) - 1] : null;
@@ -651,8 +660,12 @@ function render(assignedList) {
     ul.appendChild(li);
   });
 
-  // 待重做清单（点错了可撤销；复制清单发给总包）
-  const redoItems = statsList.filter(p => !isDone(p) && isRedo(p));
+  // 待重做清单（点错了可撤销；推送给总包）
+  // v1.0.29：直接按 redoState 里的记录显示，用存下来的 set_no（工人真正重做的那套），
+  // 不要按 pid 去队里现找——队一重排，队里那套就变了（3 号 Anua 显示 131 套、实际重做的是 51 套）。
+  // 已做完的 pid 不再显示（替代套做完了 = 这条重做已解决）。
+  const redoPids = Object.keys(redoState).filter(pid => !doneState[pid]);
+  const redoItems = redoPids;
   // 单张待重做：全队里被标记过的图
   const redoImgItems = [];
   Object.keys(redoImgState).forEach(pid => {
@@ -667,20 +680,22 @@ function render(assignedList) {
   document.getElementById('redoListSummary').textContent = '待重做（整组 ' + redoItems.length + ' 套 · 单张 ' + redoImgItems.length + ' 张）· 点开查看';
   const rul = document.getElementById('redoList');
   rul.innerHTML = '';
-  redoItems.forEach(p => {
-    const info = redoState[String(p.pid)] || {};
+  redoPids.forEach(pid => {
+    const info = redoState[pid] || {};
     const li = document.createElement('li');
     const span = document.createElement('span');
     const reasonStr = reasonsText(info.reasons);
     const imgsStr = (info.images && info.images.length) ? ' · 图' + info.images.join('、图') + '不行' : '';
-    span.textContent = '第' + p.set_no + '套 · 整组重做' + imgsStr + ' · ' + p.title_cn + '（pid: ' + p.pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '') + (reasonStr ? ' · ' + reasonStr : '') + (info.note ? ' · ' + info.note : '');
+    const setNo = info.set_no;
+    const inQueue = setNo != null && statsList.some(x => x.set_no === setNo);
+    span.textContent = '第' + (setNo != null ? setNo : '?') + '套' + (setNo != null && !inQueue ? '（已不在本队）' : '') + ' · 整组重做' + imgsStr + ' · ' + (info.title_cn || '') + '（pid: ' + pid + '）' + (info.time ? ' · ' + fmtTime(info.time) : '') + (reasonStr ? ' · ' + reasonStr : '') + (info.note ? ' · ' + info.note : '');
     const btn = document.createElement('button');
     btn.className = 'restore';
     btn.type = 'button';
     btn.textContent = '撤销';
     btn.addEventListener('click', () => {
-      delete redoState[String(p.pid)];
-      recordClearedRedo(p.pid); // v1.0.25：撤销也记 tombstone，合并写时云端旧记录不复活
+      delete redoState[pid];
+      recordClearedRedo(pid); // v1.0.25：撤销也记 tombstone，合并写时云端旧记录不复活
       saveJSON(LS_REDO, redoState);
       pushStateToChannel();
       render(assignedList);
@@ -1147,9 +1162,10 @@ document.getElementById('restoreRemovedBtn').addEventListener('click', () => {
   toast('已恢复全部移除的品');
 });
 
-/* 复制待重做清单：发给总包登记。格式里带账号、pid、套号、时间，总包粘贴到 master.html 解析即可。 */
+/* 复制待重做清单：发给总包登记。格式里带账号、pid、套号、时间，总包粘贴到 master.html 解析即可。
+   v1.0.29：用 redoState 里存的套号（不要按 pid 去队里现找，队重排后会张冠李戴）。 */
 function copyRedoList(btn) {
-  const items = (AUTO_MODE ? autoQueueProducts : currentAssigned).filter(p => !isDone(p) && isRedo(p));
+  const pids = Object.keys(redoState).filter(pid => !doneState[pid]);
   const imgItems = [];
   Object.keys(redoImgState).forEach(pid => {
     const e = redoImgState[pid];
@@ -1158,21 +1174,45 @@ function copyRedoList(btn) {
       imgItems.push({ pid: pid, set_no: e.set_no, title_cn: e.title_cn, imgNo: parseInt(imgNo, 10), info: e.images[imgNo] });
     });
   });
-  if (!items.length && !imgItems.length) { toast('没有待重做的品'); return; }
-  const lines = [ACCT_NAME + ' 待重做（整组 ' + items.length + ' · 单张 ' + imgItems.length + '）：'];
-  items.forEach((p, i) => {
-    const info = redoState[String(p.pid)] || {};
+  if (!pids.length && !imgItems.length) { toast('没有待重做的品'); return; }
+  const lines = [ACCT_NAME + ' 待重做（整组 ' + pids.length + ' · 单张 ' + imgItems.length + '）：'];
+  pids.forEach((pid, i) => {
+    const info = redoState[pid] || {};
     const reasonStr = reasonsText(info.reasons);
     const imgsStr = (info.images && info.images.length) ? ' 图' + info.images.join('、图') + '不行' : '';
-    lines.push((i + 1) + '. 第' + p.set_no + '套 整组重做' + imgsStr + ' ' + p.title_cn + ' pid ' + p.pid + (info.time ? '（' + fmtTime(info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
+    lines.push((i + 1) + '. 第' + (info.set_no != null ? info.set_no : '?') + '套 整组重做' + imgsStr + ' ' + (info.title_cn || '') + ' pid ' + pid + (info.time ? '（' + fmtTime(info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
   });
   imgItems.forEach((it, i) => {
     const reasonStr = reasonsText(it.info.reasons);
-    lines.push((items.length + i + 1) + '. 第' + it.set_no + '套 图' + it.imgNo + '重做 ' + it.title_cn + ' pid ' + it.pid + (it.info.time ? '（' + fmtTime(it.info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (it.info.note ? ' 备注：' + it.info.note : ''));
+    lines.push((pids.length + i + 1) + '. 第' + it.set_no + '套 图' + it.imgNo + '重做 ' + it.title_cn + ' pid ' + it.pid + (it.info.time ? '（' + fmtTime(it.info.time) + '）' : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (it.info.note ? ' 备注：' + it.info.note : ''));
   });
   copyText(lines.join('\n'), btn, '已复制，去发给总包');
 }
+/* v1.0.29：推送待重做给总包——直接调 pushStateToChannel 推上 Firebase，不用再复制粘贴。
+   成功显示回执，失败可点重试；复制文字只留作没网时的兜底。 */
+function pushRedoToMaster(btn) {
+  const wholeN = Object.keys(redoState).filter(pid => !doneState[pid]).length;
+  const imgN = Object.keys(redoImgState).reduce((acc, pid) => acc + Object.keys((redoImgState[pid] || {}).images || {}).length, 0);
+  if (!wholeN && !imgN) { toast('没有待重做的品'); return; }
+  btn.disabled = true;
+  btn.textContent = '推送中…';
+  pushStateToChannel().then(ok => {
+    btn.disabled = false;
+    if (ok) {
+      btn.textContent = '已推送 ✓ ' + fmtHM(Date.now()) + (imgN ? '（整组 ' + wholeN + ' · 单张 ' + imgN + '）' : '（' + wholeN + ' 套）');
+      updateSyncLine();
+      toast('待重做已推给总包，总包刷新就能看到');
+    } else {
+      btn.textContent = '推送失败，点我重试';
+      updateSyncLine();
+      toast('推送失败，请检查网络后重试，或用“复制文字备用”发给总包');
+    }
+  });
+}
 document.getElementById('copyRedoBtn').addEventListener('click', function () {
+  pushRedoToMaster(this);
+});
+document.getElementById('copyRedoTextBtn').addEventListener('click', function () {
   copyRedoList(this);
 });
 
@@ -1268,7 +1308,7 @@ function updateSyncLine() {
   const el = document.getElementById('syncLine');
   if (!el) return;
   if (syncStatus === 'ok') el.textContent = '上次提交成功 ' + fmtTime(Date.now());
-  else if (syncStatus === 'fail') el.textContent = '上次提交失败，请检查网络或用“复制本机状态”发给总包';
+  else if (syncStatus === 'fail') el.textContent = '上次提交失败，请检查网络后重试';
   else el.textContent = '';
 }
 document.getElementById('submitBtn').addEventListener('click', function () {
@@ -1279,12 +1319,14 @@ document.getElementById('submitBtn').addEventListener('click', function () {
     btn.disabled = false;
     btn.textContent = '📤 提交给总包';
     updateSyncLine();
-    toast(ok ? '已提交给总包，总包刷新就能看到' : '提交失败，请检查网络或用“复制本机状态”发给总包');
+    toast(ok ? '已提交给总包，总包刷新就能看到' : '提交失败，请检查网络后重试');
   });
 });
 
 /* 复制本机状态：把本账号全部已做完和待重做的 pid 复制成文字，发给总包粘贴同步。
-   格式与 master.html 的解析器对应：第一行“账号N 状态同步”，随后“已做完”段和“待重做”段，各带 pid。 */
+   格式与 master.html 的解析器对应：第一行“账号N 状态同步”，随后“已做完”段和“待重做”段，各带 pid。
+   v1.0.29：套号一律用存下来的（doneState[pid] / redoState[pid].set_no / redoImgState[pid].set_no），
+   不要按 pid 去产品库现找第一套——同 pid 两套时找错套。 */
 function copyStatus(btn) {
   const donePids = Object.keys(doneState);
   const redoPids = Object.keys(redoState);
@@ -1293,29 +1335,53 @@ function copyStatus(btn) {
   const lines = [ACCT_NAME + ' 状态同步'];
   lines.push('已做完（' + donePids.length + '）：');
   donePids.forEach(pid => {
-    const p = PRODUCTS.find(x => String(x.pid) === pid);
-    lines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : ''));
+    const setNo = (typeof doneState[pid] === 'number') ? doneState[pid] : null;
+    const p = setNo == null ? PRODUCTS.find(x => String(x.pid) === pid) : null;
+    lines.push('- pid ' + pid + (setNo != null ? '（第' + setNo + '套）' : (p ? '（第' + p.set_no + '套）' : '')));
   });
   lines.push('待重做（' + redoPids.length + '）：');
   redoPids.forEach(pid => {
     const info = redoState[pid] || {};
-    const p = PRODUCTS.find(x => String(x.pid) === pid);
     const reasonStr = reasonsText(info.reasons);
-    lines.push('- pid ' + pid + (p ? '（第' + p.set_no + '套）' : '') + (info.time ? ' ' + fmtTime(info.time) : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
+    lines.push('- pid ' + pid + (info.set_no != null ? '（第' + info.set_no + '套）' : '') + (info.time ? ' ' + fmtTime(info.time) : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (info.note ? ' 备注：' + info.note : ''));
   });
   lines.push('单张重做（' + redoImgPids.length + ' 个品）：');
   redoImgPids.forEach(pid => {
     const e = redoImgState[pid] || {};
-    const p = PRODUCTS.find(x => String(x.pid) === pid);
     Object.keys(e.images || {}).forEach(imgNo => {
       const im = e.images[imgNo] || {};
       const reasonStr = reasonsText(im.reasons);
-      lines.push('- pid ' + pid + ' 图' + imgNo + '重做' + (p ? '（第' + p.set_no + '套）' : '') + (im.time ? ' ' + fmtTime(im.time) : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (im.note ? ' 备注：' + im.note : ''));
+      lines.push('- pid ' + pid + ' 图' + imgNo + '重做' + (e.set_no != null ? '（第' + e.set_no + '套）' : '') + (im.time ? ' ' + fmtTime(im.time) : '') + (reasonStr ? ' [' + reasonStr + ']' : '') + (im.note ? ' 备注：' + im.note : ''));
     });
   });
   copyText(lines.join('\n'), btn, '已复制，去发给总包');
 }
+/* v1.0.29：一键同步本机状态——直接调 pushStateToChannel 推全部已做完+待重做上 Firebase，
+   和顶上「提交给总包」是同一个通道；复制文字只留作没网时的兜底。 */
+function pushStatusToMaster(btn) {
+  const doneN = Object.keys(doneState).length;
+  const redoN = Object.keys(redoState).length;
+  const imgN = Object.keys(redoImgState).reduce((acc, pid) => acc + Object.keys((redoImgState[pid] || {}).images || {}).length, 0);
+  if (!doneN && !redoN && !imgN) { toast('本机还没有已做完或待重做的品'); return; }
+  btn.disabled = true;
+  btn.textContent = '同步中…';
+  pushStateToChannel().then(ok => {
+    btn.disabled = false;
+    if (ok) {
+      btn.textContent = '已同步 ✓ 已做完 ' + doneN + ' 套、待重做 ' + (redoN + imgN) + ' 套 ' + fmtHM(Date.now());
+      updateSyncLine();
+      toast('本机状态已同步给总包');
+    } else {
+      btn.textContent = '同步失败，点我重试';
+      updateSyncLine();
+      toast('同步失败，请检查网络后重试，或用“复制文字备用”发给总包');
+    }
+  });
+}
 document.getElementById('copyStatusBtn').addEventListener('click', function () {
+  pushStatusToMaster(this);
+});
+document.getElementById('copyStatusTextBtn').addEventListener('click', function () {
   copyStatus(this);
 });
 
