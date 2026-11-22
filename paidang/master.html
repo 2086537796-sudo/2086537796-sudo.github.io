@@ -262,7 +262,7 @@ const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pi
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
-const APP_VERSION = 'v1.0.22';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.23';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -481,7 +481,41 @@ function manualAssignedPids() {
   });
   return s;
 }
+/* 重做回流不走 24 小时规则（2026-11-22 v1.0.23）：重做是替换被打回的版本，不是重复发同一品，
+   原账号 24 小时内发过同一品也不拦；只拦“同一套发过两次”和“已退役”。 */
+function sentCanSendRedo(accountId, p) {
+  if (!p) return false;
+  if (isRetired(p)) return false;
+  if (sentWasSent(accountId, p.set_no)) return false; // 同一套不发第二次
+  return true;
+}
+/* 重做自动回流（2026-11-22 v1.0.23：不用再手动点“重做完成”）。
+   待重做的 pid，若池子里已有比原套号更大的套（重做新版已入池并验证过），且新版真的能派回原账号
+   （不在别的号队里、这套没发过），自动把该条标成 returned，下次算队就派回原账号。
+   池子里没有新版时继续等，不动。 */
+function autoReturnRedos() {
+  let changed = false;
+  redoList.forEach(r => {
+    if (r.status !== 'pending') return;
+    const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid) && !isRetired(p)).map(p => p.set_no);
+    if (!sets.length) return;
+    const newest = Math.max.apply(null, sets);
+    if (newest <= (parseInt(r.set_no, 10) || 0)) return;
+    const p = bySetNo(newest);
+    if (!p) return;
+    for (const a of ACCOUNTS) {
+      if (a.id === r.account) continue;
+      if ((autoQueues[String(a.id)] || []).some(n => { const pp = bySetNo(n); return pp && String(pp.pid) === String(r.pid); })) return;
+    }
+    if (!sentCanSendRedo(r.account, p)) return;
+    r.status = 'returned';
+    r.returnedTime = Date.now();
+    changed = true;
+  });
+  if (changed) saveJSON(LS_REDO, redoList);
+}
 function computeAutoQueues() {
+  autoReturnRedos(); // 重做自动回流：有新版就自动标 returned，不用手动点
   const queues = loadAutoQueues();
   const done = new Set(Object.keys(doneMap));
   const pendRedo = new Set(redoList.filter(r => r.status === 'pending').map(r => String(r.pid)));
@@ -518,7 +552,9 @@ function computeAutoQueues() {
       if (isRetired(p)) return false;
       const pid = String(p.pid);
       if (done.has(pid) || pendRedo.has(pid) || manualPids.has(pid)) return false;
-      if (!sentCanSend(a.id, p)) return false; // 发图记号：这套/这品 24 小时内发过就不再回流
+      // 已在本号队里：移到队首（不拦——发图记号是进队时记的，重算时它已在账上，不能因此把它踢掉，否则新版每次重算都滑到队尾，v1.0.23 测试抓到）
+      if (q.includes(n)) return true;
+      if (!sentCanSendRedo(a.id, p)) return false; // 重做回流不走 24 小时规则（v1.0.23）：只拦同一套发过两次 / 已退役
       // 别的号队里已有这个 pid（另一套），不能插（同品只留一个号）
       for (const o of ACCOUNTS) {
         if (o.id === a.id) continue;
@@ -1382,14 +1418,24 @@ function applyPhoneState(accountId, data) {
     const ex = redoEntry(pid, accountId);
     if (ex) {
       const wasPending = ex.status === 'pending';
-      ex.status = 'pending';
-      ex.set_no = r.set_no || ex.set_no;
-      ex.title_cn = r.title_cn || ex.title_cn;
-      ex.time = r.time || ex.time;
-      ex.reasons = r.reasons || [];
-      ex.note = r.note || '';
-      delete ex.returnedTime;
-      if (!wasPending) nRedo++;
+      // 2026-11-22 v1.0.23 修：手机还留着旧重做标记时，别把已“重做完成”的条目翻回待重做。
+      // 只有手机重做的是更新的套（set_no 更大，即新版也被打回）才翻回 pending；
+      // 否则手机只是还没收到新版、旧标记没清掉，returned 必须保留，不然新版永远派不回去。
+      const phoneSetNo = parseInt(r.set_no, 10) || 0;
+      const entrySetNo = parseInt(ex.set_no, 10) || 0;
+      if (ex.status === 'returned' && phoneSetNo <= entrySetNo) {
+        ex.reasons = r.reasons || ex.reasons || [];
+        ex.note = r.note || ex.note || '';
+      } else {
+        ex.status = 'pending';
+        ex.set_no = r.set_no || ex.set_no;
+        ex.title_cn = r.title_cn || ex.title_cn;
+        ex.time = r.time || ex.time;
+        ex.reasons = r.reasons || [];
+        ex.note = r.note || '';
+        delete ex.returnedTime;
+        if (!wasPending) nRedo++;
+      }
     } else {
       redoList.push({ pid: pid, account: accountId, set_no: r.set_no, title_cn: r.title_cn, time: r.time || Date.now(), note: r.note || '', status: 'pending', reasons: r.reasons || [] });
       nRedo++;
@@ -1604,26 +1650,29 @@ fetch('products.json?v=' + APP_VERSION)
   .then(data => {
     PRODUCTS = data;
     fillManualSelects();
-    setMode(mode);
+    // 2026-11-22 v1.0.23 修：发图记号必须先从 Firebase 恢复完成，再算队 / 拉手机状态。
+    // 旧版恢复是“发出去就不管”，setMode 里的 computeAutoQueues 会立刻算队并把本地（可能是空的）
+    // 账推送覆盖云端——2026-11-22 10:06 就是这么丢了 7 小时发图账，导致已发过的套可能重发。
+    // 现在等恢复完成再 setMode / 拉状态。
+    return fetch('https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json')
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null);
+  })
+  .then(d => {
     // 发图记号从 Firebase 恢复一次（换浏览器/清缓存后不丢账）：取本地与云端并集，时间取最新
-    try {
-      fetch('https://paidang-sync-default-rtdb.firebaseio.com/paidang/sent.json')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d && d.h) {
-            let changed = false;
-            Object.keys(d.h).forEach(a => {
-              if (!sentHistory[a]) sentHistory[a] = {};
-              Object.keys(d.h[a] || {}).forEach(n => {
-                const e = d.h[a][n];
-                const cur = sentHistory[a][n];
-                if (!cur || (e && (e.time || 0) > (cur.time || 0))) { sentHistory[a][n] = e; changed = true; }
-              });
-            });
-            if (changed) sentSave();
-          }
-        }).catch(() => {});
-    } catch (e) {}
+    if (d && d.h) {
+      let changed = false;
+      Object.keys(d.h).forEach(a => {
+        if (!sentHistory[a]) sentHistory[a] = {};
+        Object.keys(d.h[a] || {}).forEach(n => {
+          const e = d.h[a][n];
+          const cur = sentHistory[a][n];
+          if (!cur || (e && (e.time || 0) > (cur.time || 0))) { sentHistory[a][n] = e; changed = true; }
+        });
+      });
+      if (changed) sentSave();
+    }
+    setMode(mode);
     // 自动同步：打开就拉一次，之后每 5 秒拉一次各手机最新状态
     pullFromChannel();
     setInterval(pullFromChannel, 5000);
