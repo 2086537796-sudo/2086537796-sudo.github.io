@@ -527,6 +527,38 @@ function redoEntry(pid, account) {
 
 /* pid 当前状态（总包视角）：
    done / redo(待重做) / return(重做回流，在池子里，优先派回原账号) / assigned(已派给某账号) / pool(待派送) */
+// v1.0.27 迁移：把旧格式 doneMap（只记 pid、不记套号，来自 v1.0.25 之前的版本 / 老版手机只报 pid）
+// 转成按套记。推断方法：该品的套里，凡是不在任何队、不在人工派单、不待重做、还没按套记过的，
+// 剩下的就是做完的那套（通常只剩一套；剩多套时取最小套号——套是按顺序做的，最早的先做完）。
+// 找不到候选（全部套都已有去向）时不动，留作 pid 级标记。
+// 在启动时拉完手机状态后、第一次算队前跑一次；之后的新上报走 applyPhoneState 的推断。
+function migrateOldDone() {
+  let n = 0;
+  const queued = new Set();
+  Object.keys(autoQueues).forEach(id => (autoQueues[id] || []).forEach(sn => queued.add(sn)));
+  Object.keys(assign).forEach(id => (assign[id] || []).forEach(sn => queued.add(sn)));
+  const redoSetNos = new Set(redoList.filter(r => r.status === 'pending').map(r => r.set_no));
+  Object.keys(doneMap).forEach(pid => {
+    const rec = doneMap[pid];
+    if (!rec) return;
+    if (!rec.sets) {
+      rec.sets = {};
+      if (rec.set_no != null && rec.account != null) rec.sets[String(rec.set_no)] = rec.account;
+    }
+    // 已有按套记录的跳过（v1.0.25 之后记的）
+    if (Object.keys(rec.sets).length > 0) return;
+    const sets = PRODUCTS.filter(p => String(p.pid) === String(pid) && !isRetired(p)).map(p => p.set_no);
+    const cand = sets.filter(sn => !queued.has(sn) && !redoSetNos.has(sn));
+    if (cand.length === 0) return;
+    const doneSetNo = Math.min.apply(null, cand);
+    rec.sets[String(doneSetNo)] = rec.account;
+    rec.set_no = doneSetNo;
+    n++;
+  });
+  if (n > 0) saveJSON(LS_DONE, doneMap);
+  return n;
+}
+
 function pidState(pid) {
   pid = String(pid);
   // 2026-11-22 新规矩：一个 pid 的“已做完”指它全部未退役的套都做完了（按套记）。
@@ -2072,6 +2104,9 @@ fetch('products.json?v=' + APP_VERSION)
     }
     updateBootBanner();
     setMode(mode);
+    // v1.0.27：旧 done 数据迁移（只记 pid 的转成按套记），必须在第一次算队前跑，
+    // 否则已做完的套会被 isDone 判“没做完”重新派回去。
+    try { const m = migrateOldDone(); if (m > 0) console.log('migrateOldDone: 迁移了 ' + m + ' 条旧 done 记录'); } catch (e) {}
     if (bootState === 'ready') computeAutoQueues();
     render();
     // 自动同步：之后每 5 秒拉一次各手机最新状态；degraded 时每次拉成功都尝试恢复 READY。
