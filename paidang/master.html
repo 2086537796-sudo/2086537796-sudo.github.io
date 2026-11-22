@@ -262,7 +262,7 @@ const LS_LOG = 'paidang_log';       // [ {time, account, sets:[set_no], pids:[pi
 const LS_MODE = 'paidang_mode';     // 'manual' | 'auto' —— 派单模式，默认人工（不破坏现有行为）
 const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, img, fn, reasons, note, time} ] —— 手机上点的单张重做
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
-const APP_VERSION = 'v1.0.23';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.24';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* 重做理由（二级选项，可多选）：手机点“重做”时勾选，生图重做按这些理由改。 */
 const REDO_REASONS = [
@@ -289,6 +289,10 @@ function parseReasons(str) {
 const SYNC_BASE = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang/acct';
 let lastPullTime = 0;
 let lastPullOk = false;
+let bootReady = false; // v1.0.24 ready 门：第一次成功拉到各手机状态之前，不许把算好的队推到 Firebase。
+// 启动时本机 done/redo 可能还是旧的/空的，先算队就推会把“没做过”的错队发下去（2026-11-22 10:27 大洗牌的根因之一）。
+// 本地 localStorage 照常保存，只是不推云端；第一次拉取成功后放行。
+let shrinkConflicts = {}; // v1.0.24：{ accountId: { master, incoming, time } } —— 手机推来的状态比总包存量缩水一半以上，疑似分脑覆盖
 function autoQKey(id) { return 'paidang_auto_q_a' + id; } // 自动队：每号一条 set_no 列表
 let mode = 'manual';
 let autoQueues = {};   // { "1": [set_no...], "2": [...] } —— 自动派单的队（内存缓存，与 localStorage 同步）
@@ -355,11 +359,33 @@ function sentPidWithin24h(accountId, pid) {
   }
   return false;
 }
+// v1.0.24：跨号检查——同一套发给过任何一个号，就不许再进别的号的队；
+// 同一品 24 小时内发给过任何一个号，非爆品也不许再进别的号的队。
+// （旧版只查本号，同一套换个号就拦不住——2026-11-22 实测 5/58/75/126/127 先记 8 号、十几分钟后又记 5 号。）
+function sentWasSentAnywhere(set_no) {
+  const k = String(set_no);
+  for (const a in sentHistory) { if (sentHistory[a] && sentHistory[a][k]) return true; }
+  return false;
+}
+function sentPidWithin24hAnywhere(pid) {
+  const now = Date.now();
+  for (const a in sentHistory) {
+    const h = sentHistory[a] || {};
+    for (const k in h) {
+      const e = h[k];
+      if (e && String(e.pid) === String(pid) && (now - (e.time || 0)) < SENT_24H) return true;
+    }
+  }
+  return false;
+}
 function sentCanSend(accountId, p) {
   if (!p) return false;
   if (isRetired(p)) return false;
   if (sentWasSent(accountId, p.set_no)) return false; // 同一套不发第二次
+  if (sentWasSentAnywhere(p.set_no)) return false; // v1.0.24：同一套发给过任何号都不再发
   if (sentPidWithin24h(accountId, p.pid)) return false; // 同一品 24 小时内不发第二次
+  // v1.0.24：同一品 24 小时内发给过任何号，非爆品不许再进别的号（爆品 8 套分 8 号是例外）
+  if (!isHotPid(p.pid) && sentPidWithin24hAnywhere(p.pid)) return false;
   return true;
 }
 function sentRecord(accountId, p) {
@@ -456,7 +482,8 @@ function saveAutoQueues(map) {
     autoQueues[String(a.id)] = arr;
     saveJSON(autoQKey(a.id), arr);
   });
-  pushQueuesToFirebase(map);
+  // v1.0.24 ready 门：第一次成功拉到手机状态前不推云端队（本地照常存）
+  if (bootReady) pushQueuesToFirebase(map);
 }
 /* 总包把各号的队也推到 Firebase，手机点“拉下一组”时直接从这里拿最新队，不用等总包发新链接 */
 function pushQueuesToFirebase(map) {
@@ -487,6 +514,7 @@ function sentCanSendRedo(accountId, p) {
   if (!p) return false;
   if (isRetired(p)) return false;
   if (sentWasSent(accountId, p.set_no)) return false; // 同一套不发第二次
+  if (sentWasSentAnywhere(p.set_no)) return false; // v1.0.24：同一套发给过任何号都不再发
   return true;
 }
 /* 重做自动回流（2026-11-22 v1.0.23：不用再手动点“重做完成”）。
@@ -1394,7 +1422,22 @@ function applyPhoneState(accountId, data) {
   const masterHasAcct = Object.keys(doneMap).some(pid => doneMap[pid].account === accountId)
     || redoList.some(r => r.account === accountId)
     || redoImgList.some(r => r.account === accountId);
-  const skipDeleteAlign = incomingEmpty && masterHasAcct;
+  // v1.0.24 缩水保护：手机推来的已做完+待重做+单张重做总数，不到总包存量的一半，且总包存量不少——
+  // 几乎一定是另一个浏览器整包覆盖（分脑）把记录删了，不是用户真的取消了大半标记。
+  // 这时不做删除对齐，只做新增合并；冲突记下来在页面提示，等人工确认。
+  const masterCount = Object.keys(doneMap).filter(pid => doneMap[pid].account === accountId).length
+    + redoList.filter(r => r.account === accountId && r.status === 'pending').length
+    + redoImgList.filter(r => r.account === accountId).length;
+  const incomingCount = phoneDone.size + phoneRedos.size + phoneRedoImgs.length;
+  const shrinkConflict = masterCount > 0 && incomingCount < masterCount / 2;
+  if (shrinkConflict) {
+    const prev = shrinkConflicts[String(accountId)];
+    shrinkConflicts[String(accountId)] = { master: masterCount, incoming: incomingCount, time: Date.now() };
+    if (!prev) toast('注意：' + accountId + ' 号手机推来的状态比总包少了一半以上（总包 ' + masterCount + ' 条，手机 ' + incomingCount + ' 条），疑似另一个浏览器在覆盖，已先保留总包记录，请检查该号是不是在两个浏览器里同时开着。');
+  } else {
+    delete shrinkConflicts[String(accountId)];
+  }
+  const skipDeleteAlign = (incomingEmpty && masterHasAcct) || shrinkConflict;
   // 已做完：以格子为准整批对齐（该号的）
   if (!skipDeleteAlign) {
     Object.keys(doneMap).forEach(pid => {
@@ -1493,6 +1536,7 @@ function pullFromChannel() {
     lastPullTime = Date.now();
     lastPullOk = ok;
     if (ok) {
+      bootReady = true; // v1.0.24：第一次成功拉到手机状态，放行推队
       saveJSON(LS_DONE, doneMap);
       saveJSON(LS_REDO, redoList);
       saveJSON(LS_REDO_IMG, redoImgList);
