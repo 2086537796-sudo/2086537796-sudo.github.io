@@ -124,7 +124,7 @@
 <header>
   <h1>总包工作台 · 派单</h1>
   <div class="sub">新品先进「待派送」池子 → 从池子里按每组 10 个派给账号 → 一个 pid 同一时间只派给一个账号。</div>
-  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.27 · 2026-11-22 · 如果这里显示的不是 v1.0.27，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
+  <div class="sub" id="versionLine" style="color:#999;">版本 v1.0.28 · 2026-11-22 · 如果这里显示的不是 v1.0.28，说明浏览器在用缓存的老页面，请硬刷新（Ctrl+Shift+R）或清缓存再打开</div>
 </header>
 
 <div id="bootBanner" style="display:none; background:#fff3cd; color:#664d03; border:1px solid #ffecb5; padding:10px 14px; margin:10px 14px 0; border-radius:6px; font-size:14px;"></div>
@@ -267,7 +267,7 @@ const LS_REDO_IMG = 'paidang_redo_img'; // [ {pid, account, set_no, title_cn, im
 const LS_SENT = 'paidang_sent';       // { "1": { set_no: {pid, style, time} } } —— 发图记号：每号发过哪些套、什么时候发的（防重复总账）
 const LS_SHRINK_WARNED = 'paidang_shrink_warned'; // v1.0.26：{ accountId: "master-incoming" } —— 缩水警告已弹过，同样数字不再重复弹（刷新页面也不重弹）
 const LS_SHRINK_RESTORED = 'paidang_shrink_restored'; // v1.0.26：{ accountId: timestamp } —— 上次把总包记录写回 Firebase 帮手机恢复的时间，5 分钟节流
-const APP_VERSION = 'v1.0.27';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
+const APP_VERSION = 'v1.0.28';    // 页面版本（显示在页头，确认加载的是不是最新版就看它）
 
 /* v1.0.26 热修复（已上线）：页头版本从 APP_VERSION 动态填（之前写死 v1.0.25，升版漏改，用户刷新后还以为没更新）。
    + 版本检测——页面加载时用 cache-busting 读一次线上本页的 APP_VERSION，
@@ -1031,6 +1031,26 @@ function computeAutoQueues() {
     });
   }
   lastDedupReport = { fixed: dedupFixed, time: Date.now() };
+  // 4.5 v1.0.28：重做已解决标记——待重做的条目，若其替代套（该 pid 在池子里的最大 set_no，
+  //    与 Step 2 同口径）已在原账号队里，说明新版已派回原号，这条重做已解决，不再显示为待处理。
+  //    只标 status 为 'returned'，不删条目（走现有清理流程：建链接带 cr= 后清除）；
+  //    替代套还没进队的条目保持 pending。注意：Step 2 已跑过，本轮只标不移位，下轮算队时 Step 2 再把它移到队首。
+  {
+    let redoResolved = false;
+    redoList.forEach(r => {
+      if (r.status !== 'pending') return;
+      const sets = PRODUCTS.filter(p => String(p.pid) === String(r.pid) && !isRetired(p)).map(p => p.set_no);
+      if (!sets.length) return;
+      const newest = Math.max.apply(null, sets);
+      if (newest <= (parseInt(r.set_no, 10) || 0)) return; // 池子里还没有新版
+      const q = queues[String(r.account)] || [];
+      if (!q.includes(newest)) return; // 替代套还没进原号队里
+      r.status = 'returned';
+      r.returnedTime = Date.now();
+      redoResolved = true;
+    });
+    if (redoResolved) saveJSON(LS_REDO, redoList);
+  }
   // 5. 记账（发图记号）：队里最终留下的套，凡是账上没有的都记一笔（pid+风格+时间）。
   //    下次再算队时，第 2/2.5/3 步会查这本账——同一套不发第二次，同一品 24 小时内不发第二次，
   //    所以更新 products.json 时旧品不会再被推出来。
@@ -1165,6 +1185,38 @@ function setMode(m) {
    手机点“拉下一组”就拉到空（2026-11-22 3 号实测：队里 10 套全消费完，拉下一组空白）。 */
 function afterStateChange() {
   computeAutoQueues();
+}
+/* v1.0.28：空队自动补货触发——每次成功拉到手机状态后，若有号的队空了（或只剩已做完/待重做的套）、
+   但池子里还有可派给这号的套，立即重算并推送，不等用户手动点。
+   只加触发逻辑，不改派单规则（computeAutoQueues 内部的一品分号、按套 done、24 小时规则原样）。
+   返回是否触发了重算。 */
+function refillEmptyQueuesIfNeeded() {
+  if (bootState !== 'ready') return false; // READY 门：没恢复完成不算队、不推队
+  const queues = loadAutoQueues();
+  const manualPids = manualAssignedPids();
+  let needRefill = false;
+  ACCOUNTS.forEach(a => {
+    const q = queues[String(a.id)] || [];
+    const remain = q.filter(n => {
+      const p = bySetNo(n);
+      return p && !isDone(p, a.id) && !isPendRedo(p, a.id);
+    }).length;
+    if (remain > 0) return; // 这号还有可做的，不用补
+    // 这号队空了：池子里有没有能派给这号的套？（按 Step 3 候选口径粗判，细则由 computeAutoQueues 再判）
+    const supply = PRODUCTS.some(p => {
+      if (isRetired(p)) return false;
+      if (isDone(p, null) || isPendRedo(p, null) || manualPids.has(String(p.pid))) return false;
+      if (!sentCanSend(a.id, p)) return false; // 24 小时内发过这品的号不补
+      for (const b of ACCOUNTS) {
+        if ((queues[String(b.id)] || []).includes(p.set_no)) return false;
+      }
+      return true;
+    });
+    if (supply) needRefill = true;
+  });
+  if (!needRefill) return false;
+  computeAutoQueues();
+  return true;
 }
 
 function copyText(text, btn, okLabel) {
@@ -1942,7 +1994,10 @@ function pullFromChannel() {
   });
 }
 document.getElementById('pullBtn').addEventListener('click', () => {
-  pullFromChannel().then(ok => toast(ok ? '已拉取各手机最新状态' : '拉取失败，请检查网络'));
+  pullFromChannel().then(ok => {
+    if (ok) refillEmptyQueuesIfNeeded(); // v1.0.28：空队自动补货触发
+    toast(ok ? '已拉取各手机最新状态' : '拉取失败，请检查网络');
+  });
 });
 document.getElementById('forcePullBtn').addEventListener('click', () => {
   if (!confirm('强制重拉会清空总包本机记的已做完 / 待重做 / 单张重做，再从云端重新拉一遍。派单记录和手动派单不受影响。确定吗？')) return;
@@ -2113,6 +2168,8 @@ fetch('products.json?v=' + APP_VERSION)
     setInterval(() => {
       pullFromChannel().then(ok => {
         if (ok && bootState !== 'ready') maybeBecomeReady();
+        // v1.0.28：空队自动补货触发——拉成功后有号队空了且池里有货，立即重算并推送
+        if (ok) refillEmptyQueuesIfNeeded();
       });
     }, 5000);
   })
