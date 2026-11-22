@@ -246,25 +246,30 @@ let AUTO_QUEUE = (params.get('q') || '').split(',').map(x => parseInt(x, 10)).fi
 const LINK_Q = (params.get('q') || ''); // v1.0.24：链接本身的 q（打开链接时就定死，之后 Firebase 队怎么变它都不变）
 /* 从 Firebase 拉本号最新队（总包每 5 秒推一次）。返回 true 表示队变了。 */
 function fetchQueueFromFirebase() {
-  if (!AUTO_MODE) return Promise.resolve(false);
+  // v1.0.25：返回值区分三种情况（GPT 重设计 §5.1）——
+  // 'ok' = 拿到新队；'empty' = 服务器确认队是空的（旧链接的 q 不能复活）；'error' = 网络/数据失败（不能用旧 q 领任务）。
+  // 旧版空队和失败都返回 false，手机会继续用 URL 上的旧队领任务。
+  if (!AUTO_MODE) return Promise.resolve('error');
   return fetch(SYNC_BASE + '/queue/acct' + ACCT_ID + '.json', { headers: { 'Accept': 'application/json' } })
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(data => {
-      if (!data || !Array.isArray(data.q) || !data.q.length) return false;
+      if (!data || !Array.isArray(data.q)) return 'empty';
       const q = data.q.map(n => parseInt(n, 10)).filter(n => !isNaN(n) && n > 0);
-      if (!q.length || q.join(',') === AUTO_QUEUE.join(',')) return false;
+      if (!q.length) return 'empty';
+      if (q.join(',') === AUTO_QUEUE.join(',')) return 'ok';
       AUTO_QUEUE = q;
       setupAutoQueue();
-      return true;
+      return 'ok';
     })
-    .catch(() => false);
+    .catch(() => 'error');
 }
 
 /* 本账号的本地状态（只存在这台手机上，别的账号看不到，也不会互相影响） */
-const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: true } —— 按 pid 记，做完永不再推
+const LS_DONE = 'paidang_done_a' + ACCT_ID;       // { pid: set_no } —— 按 pid 记，做完永不再推（v1.0.25 值改存 set_no，爆品按 set_no 记任务身份；老数据 true 也兼容）
 const LS_REMOVED = 'paidang_removed_a' + ACCT_ID; // { set_no: true } —— 按套移除，可恢复
 const LS_REDO = 'paidang_redo_a' + ACCT_ID;       // { pid: {time, set_no, title_cn, reasons, note} } —— 按 pid 记，整组重做
 const LS_REDO_IMG = 'paidang_redo_img_a' + ACCT_ID; // { pid: {set_no, title_cn, images: {imgNo: {fn, reasons, note, time}}} } —— 单张重做（图N）
+const LS_CLEARED_REDO = 'paidang_cleared_redo_a' + ACCT_ID; // v1.0.25：{ pid: time } —— 本机清掉的重做标记（cr 清除/手动取消），合并写时据此拦住云端旧记录复活（tombstone）
 const LS_AUTO_Q = 'paidang_auto_q_a' + ACCT_ID;   // 上次打开的自动队（q 字符串，用来判断链接是不是更新了）
 const LS_AUTO_SEEN = 'paidang_auto_seen_a' + ACCT_ID; // 已被刷新跳过的 set_no（本机已看过的组）
 
@@ -285,12 +290,65 @@ function reasonsText(codes) { return (codes || []).map(reasonLabel).join('、');
 const SYNC_BASE = 'https://paidang-sync-default-rtdb.firebaseio.com/paidang';
 const SYNC_URL = SYNC_BASE + '/acct' + ACCT_ID + '.json';
 let syncStatus = ''; // 上次推送结果：'ok' | 'fail' | ''
+// v1.0.25 合并写（GPT 重设计 P2）：先 GET 云端当前状态，与本机做并集再 PUT。
+// 旧版整包 PUT：两个浏览器轮流覆盖，后写的旧快照会把先写的记录抹掉（分脑，2026-11-22 实测）。
+// 合并规则：done 取并集；redos 按 pid 取时间更新的，tombstone（本机清掉的）拦住云端旧记录复活；
+// redos_img 按 (pid, 图号) 取时间更新的。GET 失败时退回整包 PUT（不断网时不丢数据），并标记 fail。
+function mergePhoneState(cloud, local) {
+  const merged = {
+    account: local.account,
+    updated: Date.now(),
+    done: [],
+    redos: [],
+    redos_img: [],
+  };
+  // done：并集（按 pid；同一 pid 取带 set_no 的那条，爆品按 set_no 记任务身份）
+  const doneMap = new Map();
+  (cloud && Array.isArray(cloud.done) ? cloud.done : []).forEach(item => {
+    const pid = typeof item === 'string' ? String(item) : String(item.pid);
+    const setNo = (item && typeof item === 'object' && item.set_no != null) ? parseInt(item.set_no, 10) : null;
+    doneMap.set(pid, { pid: pid, set_no: setNo });
+  });
+  (local.done || []).forEach(item => {
+    const pid = String(item.pid);
+    const cur = doneMap.get(pid);
+    const setNo = item.set_no != null ? item.set_no : null;
+    if (!cur || (cur.set_no == null && setNo != null)) doneMap.set(pid, { pid: pid, set_no: setNo });
+  });
+  merged.done = Array.from(doneMap.values());
+  // redos：按 pid 取时间更新的；tombstone 拦住已清掉的
+  const redoMap = new Map();
+  (cloud && Array.isArray(cloud.redos) ? cloud.redos : []).forEach(r => {
+    const pid = String(r.pid);
+    const tomb = clearedRedoState[pid] || 0;
+    if (tomb >= (r.time || 0)) return; // 本机清掉的，不复活
+    redoMap.set(pid, r);
+  });
+  (local.redos || []).forEach(r => {
+    const pid = String(r.pid);
+    const cur = redoMap.get(pid);
+    if (!cur || (r.time || 0) >= (cur.time || 0)) redoMap.set(pid, r);
+  });
+  merged.redos = Array.from(redoMap.values());
+  // redos_img：按 (pid, 图号) 取时间更新的
+  const imgMap = new Map();
+  const imgKey = it => String(it.pid) + '#' + String(it.img);
+  (cloud && Array.isArray(cloud.redos_img) ? cloud.redos_img : []).forEach(it => imgMap.set(imgKey(it), it));
+  (local.redos_img || []).forEach(it => {
+    const k = imgKey(it);
+    const cur = imgMap.get(k);
+    if (!cur || (it.time || 0) >= (cur.time || 0)) imgMap.set(k, it);
+  });
+  merged.redos_img = Array.from(imgMap.values());
+  return merged;
+}
 function pushStateToChannel() {
   if (!SYNC_URL) return Promise.resolve(false);
-  const payload = {
+  const localPayload = {
     account: ACCT_ID,
     updated: Date.now(),
-    done: Object.keys(doneState),
+    // v1.0.25：done 带 set_no（爆品按 set_no 记任务身份）；老数据 true 时 set_no 为 null
+    done: Object.keys(doneState).map(pid => ({ pid: pid, set_no: (typeof doneState[pid] === 'number' ? doneState[pid] : null) })),
     redos: Object.keys(redoState).map(pid => {
       const info = redoState[pid] || {};
       return { pid: pid, set_no: info.set_no, title_cn: info.title_cn, time: info.time, reasons: info.reasons || [], note: info.note || '', images: info.images || [] };
@@ -303,7 +361,13 @@ function pushStateToChannel() {
       });
     })
   };
-  return fetch(SYNC_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(payload) })
+  // 先 GET 再并集 PUT；GET 失败时退回整包 PUT
+  return fetch(SYNC_URL, { headers: { 'Accept': 'application/json' } })
+    .then(r => (r.ok ? r.json() : null)).catch(() => null)
+    .then(cloud => {
+      const payload = cloud ? mergePhoneState(cloud, localPayload) : localPayload;
+      return fetch(SYNC_URL, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(payload) });
+    })
     .then(r => { syncStatus = r.ok ? 'ok' : 'fail'; return r.ok; })
     .catch(() => { syncStatus = 'fail'; return false; });
 }
@@ -332,10 +396,16 @@ redoImgState = loadJSON(LS_REDO_IMG, {});
 /* 总包重新派单时带的清除重做指令：?cr=pid1,pid2 —— 清掉本机这些 pid 的重做标记，让新版重新出现。
    只清“重做”，不碰“已做完”。 */
 const CLEAR_REDO = (params.get('cr') || '').split(',').map(s => s.trim()).filter(Boolean);
+// v1.0.25：清掉重做标记时记 tombstone（时间），合并写时云端旧记录不复活。
+let clearedRedoState = loadJSON(LS_CLEARED_REDO, {});
+function recordClearedRedo(pid) {
+  clearedRedoState[String(pid)] = Date.now();
+  saveJSON(LS_CLEARED_REDO, clearedRedoState);
+}
 if (CLEAR_REDO.length) {
   let changed = false;
   CLEAR_REDO.forEach(pid => {
-    if (redoState[pid]) { delete redoState[pid]; changed = true; }
+    if (redoState[pid]) { delete redoState[pid]; recordClearedRedo(pid); changed = true; }
   });
   if (changed) saveJSON(LS_REDO, redoState);
 }
@@ -608,6 +678,7 @@ function render(assignedList) {
     btn.textContent = '撤销';
     btn.addEventListener('click', () => {
       delete redoState[String(p.pid)];
+      recordClearedRedo(p.pid); // v1.0.25：撤销也记 tombstone，合并写时云端旧记录不复活
       saveJSON(LS_REDO, redoState);
       pushStateToChannel();
       render(assignedList);
@@ -784,7 +855,8 @@ function buildCard(p) {
       return;
     }
     clearTimeout(armTimer);
-    doneState[String(p.pid)] = true;   // 按 pid 记：这个 pid 永不再推给本账号
+    // v1.0.25：done 按 set_no 记（爆品按 set_no 记任务身份）。值存 set_no，老数据是 true 时 set_no 为 null。
+    doneState[String(p.pid)] = p.set_no;
     saveJSON(LS_DONE, doneState);
     pushStateToChannel();
     render(currentAssigned);
@@ -1120,8 +1192,21 @@ function copyText(text, btn, okLabel) {
    拉到的新组会写进链接（replaceState），刷新页面也不丢。 */
 function refreshBatch() {
   if (!PRODUCTS.length) { toast('产品库还没加载好，稍等一下再点'); return; }
-  // 拉下一组的同时，把本机当前状态（已做完 + 待重做）推给总包，并从 Firebase 拿最新队
-  pushStateToChannel().then(updateSyncLine);
+  // v1.0.25：先提交并等服务器确认，再拉下一组（GPT 重设计 §5.2）。
+  // 旧版 pushStateToChannel 发出去就不等，总包还没收到刚做完的信息，手机已经拿下一组了。
+  pushStateToChannel().then(synced => {
+    updateSyncLine();
+    if (!synced) { toast('状态尚未同步成功，暂不能领取下一组，请检查网络后重试'); return; }
+    if (AUTO_MODE) {
+      fetchQueueFromFirebase().then(res => {
+        if (res === 'error') { toast('拉取总包最新队失败，请检查网络后重试（不要用旧队领任务）'); return; }
+        if (res === 'empty') { toast('总包队是空的，补货后重新点「拉下一组」'); return; }
+        doRefresh();
+      });
+    } else {
+      doRefresh();
+    }
+  });
   const doRefresh = () => {
   if (AUTO_MODE) {
     // 自动模式：直接从队里拿接下来 10 个未消费的套，不用总包再发链接
@@ -1166,9 +1251,7 @@ function refreshBatch() {
   window.scrollTo(0, 0);
   toast('已拉到下一组：' + next.length + ' 套');
   };
-  // 自动模式先从 Firebase 拿总包算好的最新队，再算下一组；手动模式直接算
-  if (AUTO_MODE) fetchQueueFromFirebase().then(doRefresh);
-  else doRefresh();
+  // v1.0.25：拉队逻辑已移到开头的 pushStateToChannel().then 里（先同步成功、再拉队、再算下一组）。
 }
 document.getElementById('refreshBtn').addEventListener('click', refreshBatch);
 
@@ -1285,7 +1368,7 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
     : '这个链接里没有派单信息（缺账号或品）。请找总包重新发一条派单链接给你。');
   renderStats([]);
 } else {
-  fetch('products.json?v=1.0.24')
+  fetch('products.json?v=1.0.25')
     .then(r => { if (!r.ok) throw new Error('products.json 读取失败'); return r.json(); })
     .then(data => {
       PRODUCTS = data;
@@ -1304,8 +1387,17 @@ if (!ACCT_ID || (!AUTO_MODE && !ASSIGNED_SETS.length) || (AUTO_MODE && !AUTO_QUE
         // 旧逻辑是先渲染链接队、等 Firebase 回来再重算，链接队过期时用户会先看到不属于自己的套
         // （比如已不在队里的 43 套闪一下又消失，2026-11-22 3 号实测）。fetch 失败也会 resolve，不会卡住。
         document.getElementById('list').innerHTML = '<div class="empty" style="display:block">正在同步总包最新派单…</div>';
-        fetchQueueFromFirebase().then(changed => {
-          if (changed) { currentAssigned = computeAutoBatch(); }
+        // v1.0.25：fetchQueue 返回 'ok'/'empty'/'error'。'empty' = 服务器确认队是空的，旧链接的 q 不能复活；
+        // 'error' = 网络失败，显示提示后用链接队兜底渲染（用户是打开链接进来的），但不把它当新队。
+        fetchQueueFromFirebase().then(res => {
+          if (res === 'empty') {
+            currentAssigned = [];
+            render(currentAssigned);
+            toast('总包队是空的，等总包补货后重新打开链接');
+            return;
+          }
+          if (res === 'error') toast('同步总包最新派单失败，显示的是链接里的旧队，请检查网络后刷新');
+          currentAssigned = computeAutoBatch();
           render(currentAssigned);
         });
       } else {
