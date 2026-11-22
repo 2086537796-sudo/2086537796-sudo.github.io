@@ -1757,14 +1757,19 @@ function applyPhoneState(accountId, data) {
   }
   const skipDeleteAlign = (incomingEmpty && masterHasAcct) || shrinkConflict;
   // 已做完：以格子为准整批对齐（该号的）——按套删，只删该号的套，不动别的号的套。
+  // reportedSetNo 三态：undefined=手机没报这 pid（该号的套全删）；null=手机报了 pid 但没 set_no
+  // （老版 acct.html，只报 pid——没法分辨是哪一套，保守地全保留）；数字=手机报了具体套（只留那套）。
   if (!skipDeleteAlign) {
     Object.keys(doneMap).forEach(pid => {
       const rec = doneMap[pid];
       if (!rec) return;
-      const reported = phoneDone.has(pid) ? String(phoneDone.get(pid)) : null;
+      const reportedSetNo = phoneDone.has(pid) ? phoneDone.get(pid) : undefined;
       if (rec.sets) {
         Object.keys(rec.sets).forEach(sn => {
-          if (rec.sets[sn] === accountId && sn !== reported) delete rec.sets[sn];
+          if (rec.sets[sn] !== accountId) return;
+          if (reportedSetNo === undefined) delete rec.sets[sn];
+          else if (reportedSetNo != null && sn !== String(reportedSetNo)) delete rec.sets[sn];
+          // reportedSetNo === null：老格式，全保留
         });
         if (Object.keys(rec.sets).length === 0) delete doneMap[pid];
       } else {
@@ -1786,9 +1791,19 @@ function applyPhoneState(accountId, data) {
       rec.sets[String(setNo)] = accountId;
       rec.account = accountId; rec.time = Date.now(); rec.set_no = setNo;
     } else {
-      // 老格式没 set_no：保守地只记一套（维持旧行为）
-      if (!doneMap[pid]) nDone++;
-      rec.account = accountId; rec.time = Date.now();
+      // 老格式没 set_no（手机还是老版 acct.html，只报 pid）：从该号队里推断是哪一套——
+      // 该号队里该 pid 的那套就是做完的那套（手机做完的套一定在它队里；新规矩下一号一品只有一套，不会歧义）。
+      const inQ = (autoQueues[String(accountId)] || []).concat(assign[String(accountId)] || [])
+        .find(n => { const pp = bySetNo(n); return pp && String(pp.pid) === pid; });
+      if (inQ != null) {
+        if (rec.sets[String(inQ)] == null) nDone++;
+        rec.sets[String(inQ)] = accountId;
+        rec.account = accountId; rec.time = Date.now(); rec.set_no = inQ;
+      } else {
+        // 队里没有该 pid 的套（比如已清掉）：保守地记 pid 级标记，不往 sets 里写。
+        if (!doneMap[pid]) nDone++;
+        rec.account = accountId; rec.time = Date.now();
+      }
     }
     doneMap[pid] = rec;
   });
